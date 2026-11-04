@@ -21,7 +21,7 @@ build/DiaPatchesSwift.o: $(DYLIB_SWIFT) | build
 
 build/DiaPatches.dylib: $(DYLIB_SOURCES) build/DiaPatchesSwift.o $(wildcard $(PASSKEYS)/*) | build
 	clang $(CFLAGS) -Isrc/dylib -dynamiclib $(EXTENSION) -framework AppKit -framework QuartzCore -framework AVFoundation -framework VideoToolbox -framework CoreMedia -framework CoreVideo \
-		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -o $@ $(filter %.m %.o,$^)
+		-L$(SWIFT_LIB) -Wl,-rpath,/usr/lib/swift $(FOUNDATION_MODELS) -lsqlite3 -o $@ $(filter %.m %.o,$^)
 
 # The patch list for diatweaks. With DIAPATCH_MANIFEST set, the dylib writes it and exits as it loads, so diapatch never runs.
 build/patches.json: build/DiaPatches.dylib build/diapatch
@@ -30,7 +30,16 @@ build/patches.json: build/DiaPatches.dylib build/diapatch
 build:
 	mkdir -p $@
 
-test: build/DiaPatches.dylib
+build/command-bar-text: tests/command-bar-text.m src/dylib/Patches/CommandBar/Text.m src/dylib/Patches/CommandBar/CommandBar.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -o $@ $(filter %.m,$^)
+
+# With a home of its own, so it never touches your Dia profile.
+build/command-bar-profile: tests/command-bar-profile.m src/dylib/Patches/CommandBar/Profile.m src/dylib/Patches/CommandBar/Text.m src/dylib/Patches/CommandBar/CommandBar.h | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -lsqlite3 -o $@ $(filter %.m,$^)
+
+test: build/DiaPatches.dylib build/command-bar-text build/command-bar-profile
+	build/command-bar-text
+	CFFIXED_USER_HOME=$(CURDIR)/build/command-bar-home build/command-bar-profile
 	./test.sh
 
 # make patch NAME=HideFooButton starts a new patch in src/dylib/Patches/HideFooButton.
