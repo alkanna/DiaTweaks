@@ -2,8 +2,9 @@
 #import <dlfcn.h>
 #import <mach-o/loader.h>
 
-// A launch that neither lasts this long nor quits normally counts as a crash.
-static const int64_t DPSurviveSeconds = 15;
+// A launch that neither lasts this long nor quits normally counts as a crash. A patch that crashes Dia often does it
+// the first time a window resizes, goes full screen or opens a new tab, so this is longer than a launch.
+static const int64_t DPSurviveSeconds = 180;
 
 NSInteger DPSafeMode;
 static NSURL *DPStateURL;

@@ -10,6 +10,7 @@ DP_PATCH(DPShowToolbarOnNewTab) {
     .symbol = @"plus.square.fill.on.square.fill",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
+    .section = @"Showing the Toolbar",
     .apply = DPApplyShowOnNewTab,
     .verify = DPVerifyKeptInPlace,
 };

@@ -14,6 +14,7 @@ static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
 @property (nonatomic, copy) NSString *originalTitle, *shownTitle;
 @property (nonatomic, strong) DPPaneView *pane;
 @property (nonatomic) NSWindowStyleMask mask;
+@property (nonatomic) NSWindowCollectionBehavior behavior;
 @property (nonatomic) NSSize minSize, maxSize;
 @property (nonatomic) CGFloat fixedHeight;
 @property (nonatomic) BOOL backWasEnabled;
@@ -95,17 +96,22 @@ static __weak DPPaneView *DPShownPane;
     if (allow == (self.fixedHeight > 0)) return;
     if (allow) {
         self.mask = window.styleMask;
+        self.behavior = window.collectionBehavior;
         self.minSize = window.contentMinSize;
         self.maxSize = window.contentMaxSize;
         self.fixedHeight = window.frame.size.height;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
+        // Resizable turns on the green button, but Settings should only grow taller, not zoom or go full screen.
+        window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
+        [window standardWindowButton:NSWindowZoomButton].enabled = NO;
         window.contentMinSize = NSMakeSize(width, 400);
         window.contentMaxSize = NSMakeSize(width, CGFLOAT_MAX);
         return;
     }
     NSRect frame = window.frame;
     window.styleMask = self.mask;
+    window.collectionBehavior = self.behavior;
     window.contentMinSize = self.minSize;
     window.contentMaxSize = self.maxSize;
     [window setFrame:NSMakeRect(frame.origin.x, NSMaxY(frame) - self.fixedHeight, frame.size.width, self.fixedHeight) display:YES];

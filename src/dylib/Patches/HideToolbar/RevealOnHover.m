@@ -21,6 +21,7 @@ DP_PATCH(DPRevealToolbarOnHover) {
     .symbol = @"cursorarrow.rays",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
+    .section = @"Showing the Toolbar",
     .apply = DPApplyReveal,
     .verify = DPVerifyRevealToolbar,
 };

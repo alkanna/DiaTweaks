@@ -13,12 +13,14 @@ NSView *DPChatCard(NSView *container);          // The page's card while Chat is
 CGFloat DPBaseCornerRadius(NSView *container);  // Dia's radius for the container, before edge-to-edge grows it.
 void DPAnimateLayer(NSView *container, CALayer *layer, NSString *key, id value);  // In step with Dia's animation of the page.
 void DPInstallRestyle(void);
+void DPInstallPopover(void);
 void DPRestyleContainer(NSView *container);
 void DPApplySquareCorners(NSView *container);
 void DPRoundCornerControls(NSView *container);
 CGPathRef DPReshapeSetPath(CALayer *layer, BOOL shadow, CGPathRef path);
 CAAnimation *DPReshapeDiaAnimation(CALayer *layer, CAAnimation *animation);
 BOOL DPBesideSidebar(NSView *container);
+BOOL DPCornersRound(CALayer *layer, BOOL right);  // Whether the page clips its right or left corners round, however they were set.
 BOOL DPFullScreen(NSView *container);  // In a full screen window, with edge-to-edge not stepping aside for Chat.
 CGFloat DPWindowCornerGrowth(NSWindow *window);  // How much rounder macOS 26 window corners made it. WindowCorners.m
 CGPathRef DPReshapeCorners(CGPathRef path, CGFloat extent, CGFloat rightScale, CGFloat leftScale);

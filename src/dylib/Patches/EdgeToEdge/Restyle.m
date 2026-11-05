@@ -9,7 +9,7 @@ void DPRestyleContainer(NSView *container) {
     if (!card) return;
     if (card.cornerCurve != kCACornerCurveContinuous) card.cornerCurve = kCACornerCurveContinuous;
     NSValue *requested = DPRequestedFrame(container);
-    if (requested && !NSEqualRects(container.frame, requested.rectValue)) container.frame = requested.rectValue;
+    if (requested && !NSEqualRects(container.frame, requested.rectValue) && DPMayAdjust(container)) container.frame = requested.rectValue;
 }
 
 // Layout, layer updates and shadow layout often happen together. Preserve the immediate

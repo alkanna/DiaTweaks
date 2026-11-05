@@ -35,12 +35,12 @@ static void DPInstallQuietDownloads(void) {
 
 DP_PATCH(DPQuietDownloads) {
     .key = @"quietDownloads",
-    .order = 86,
+    .order = 62,
     .title = @"Don’t Open Downloads List",
     .detail = @"Stop the downloads list from opening each time a download starts. The downloads button still shows progress.",
     .symbol = @"arrow.down.circle.fill",
-    .tint = @"systemPinkColor",
-    .section = @"Tabs & Downloads",
+    .tint = @"systemIndigoColor",
+    .section = @"Toolbar",
     .classes = DPClasses(DPDiaDownloadsMenu, DPDiaDownloadsButton, DPDiaTabSurfaceButton),
     .install = DPInstallQuietDownloads,
 };

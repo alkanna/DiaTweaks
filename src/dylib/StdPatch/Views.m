@@ -1,4 +1,5 @@
 #import "StdPatch/StdPatch.h"
+#import <os/log.h>
 
 NSView *DPFindView(NSView *root, BOOL (^match)(NSView *)) {
     if (!root || match(root)) return root;
@@ -43,6 +44,33 @@ void DPRelayoutViews(NSHashTable<NSView *> *views) {
         view.needsLayout = YES;
         [view layoutSubtreeIfNeeded];
     }
+}
+
+static const NSUInteger DPAdjustLimit = 8;
+
+BOOL DPMayAdjust(NSView *view) {
+    static NSMapTable<NSView *, NSNumber *> *counts;
+    if (!counts) {
+        counts = [NSMapTable weakToStrongObjectsMapTable];
+        CFRunLoopObserverRef reset = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, true, 0, ^(CFRunLoopObserverRef o, CFRunLoopActivity a) {
+            [counts removeAllObjects];
+        });
+        CFRunLoopAddObserver(CFRunLoopGetMain(), reset, kCFRunLoopCommonModes);
+    }
+    NSUInteger n = [[counts objectForKey:view] unsignedIntegerValue] + 1;
+    [counts setObject:@(n) forKey:view];
+    if (n == DPAdjustLimit + 1) {
+        os_log(OS_LOG_DEFAULT, "DiaPatches: letting Dia lay out %{public}s for the rest of this turn, which kept undoing a patch", object_getClassName(view));
+        // Many changes at once, such as several tweaks switched together, also lay a view out this often. Nothing else
+        // may lay it out again, so a moment later the window is laid out once more and the patch reapplied. A run loop kept
+        // busy that long never waits to reset the count, so the retry resets it.
+        __weak NSView *weak = view;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (weak) [counts removeObjectForKey:weak];
+            for (NSView *up = weak; up; up = up.superview) up.needsLayout = YES;
+        });
+    }
+    return n <= DPAdjustLimit;
 }
 
 void *DPIvar(id object, const char *name) {

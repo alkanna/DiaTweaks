@@ -10,6 +10,7 @@ DP_PATCH(DPShowToolbarWithSidebar) {
     .symbol = @"sidebar.left",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
+    .section = @"Showing the Toolbar",
     .apply = DPApplyShowWithSidebar,
     .verify = DPVerifyKeptInPlace,
 };

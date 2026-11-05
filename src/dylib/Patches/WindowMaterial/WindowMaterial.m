@@ -176,7 +176,7 @@ static void DPInstallWindowMaterial(void) {
 
 DP_PATCH(DPWindowMaterial) {
     .key = @"windowMaterial",
-    .order = 96,
+    .order = 99,
     .title = @"Window Material",
     .detail = @"Show a material or Liquid Glass behind the tabs and sidebar instead of the theme color.",
     .symbol = @"circle.on.app.liquid.glass.fill square.2.layers.3d.top.filled",

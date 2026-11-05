@@ -103,13 +103,13 @@ static void DPApplyGroupTabs(DPPatch *patch) {
 
 DP_PATCH(DPGroupTabs) {
     .key = @"groupTabsByDomain",
-    .order = 200,
+    .order = 86,
     .defaultOn = YES,
     .title = @"Group Tabs by Domain",
     .detail = @"Adds Group Tabs by Domain to the tab right-click menu and the Tabs menu. It groups a window’s tabs by site each time you choose it.",
     .symbol = @"rectangle.3.group.fill",
-    .tint = @"systemYellowColor",
-    .section = @"Commands",
+    .tint = @"systemPinkColor",
+    .section = @"Tabs",
     .install = DPInstallGroupTabs,
     .apply = DPApplyGroupTabs,
 };

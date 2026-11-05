@@ -1,8 +1,9 @@
 // Shared by hide toolbar and its options, which only work on top of it.
 #import "StdPatch/StdPatch.h"
+#include <simd/simd.h>
 
 extern DPPatch DPHideToolbar, DPRevealToolbarOnHover, DPShowToolbarWithSidebar, DPShowToolbarOnNewTab, DPPlainSelectedTab;
-extern DPPatch DPPeekToolbarOnCopy, DPCopyToast;
+extern DPPatch DPPeekToolbarOnCopy, DPCopyToast, DPShowLoadingProgress;
 extern NSHashTable<NSView *> *DPPanes;  // Every content pane laid out so far.
 
 // Shows the hidden toolbar while the pointer is at the top of a pane, or in its place while an option keeps it there. One per pane.
@@ -37,3 +38,20 @@ void DPRepaintTabs(NSWindow *window);  // After the toolbar's opacity changes.
 void DPShowCopyToast(NSView *pane, NSString *message);
 void DPRemoveCopyToasts(void);
 NSString *DPVerifyNoCopyToast(DPPatch *patch);
+
+// ProgressLine.m
+void DPShowProgressLine(NSView *pane, CGFloat fraction);
+void DPFinishProgressLine(NSView *pane);  // Fills it, then fades it out.
+void DPRemoveProgressLine(NSView *pane);
+BOOL DPShowsProgressLine(NSView *pane);
+
+// ProgressShader.m
+CAMetalLayer *DPProgressShaderLayer(void);  // nil when Dia's loading shader can't be loaded.
+void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, simd_float3 primary, simd_float3 secondary);
+BOOL DPProgressColorSlots(NSUInteger slots[2]);  // Where the shader takes its two colors.
+
+// ProgressColors.m
+NSMenu *DPProgressColorChoices(void);
+simd_float3 DPRGB(NSColor *color);
+void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd_float3 *secondary);
+void DPInstallProgressColors(void);

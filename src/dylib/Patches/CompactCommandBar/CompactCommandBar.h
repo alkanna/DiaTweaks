@@ -14,8 +14,7 @@ void DPSetTrim(NSView *container, CGFloat trim);
 // Layout.m
 NSSize DPCompactSize(NSView *container, NSSize size);
 void DPInstallCommandBarLayout(void);
-void DPResizePopovers(void);
 
 // NewTab.m
 void DPInstallNewTabLayout(void);
-void DPResizeNewTabPanels(void);
+BOOL DPTrimsPanel(NSView *panel);

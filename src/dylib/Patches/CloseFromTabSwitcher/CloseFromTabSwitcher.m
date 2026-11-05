@@ -122,12 +122,12 @@ static void DPInstallCloseFromTabSwitcher(void) {
 DP_PATCH(DPCloseFromTabSwitcher) {
     .key = @"closeFromTabSwitcher",
     .defaultOn = YES,
-    .order = 85,
+    .order = 86,
     .title = @"Close Tabs from Tab Switcher",
     .detail = @"Press W or ⌘W while the tab switcher (⌃⇥) is open to close the highlighted tab and keep switching.",
     .symbol = @"xmark.square.fill",
     .tint = @"systemPinkColor",
-    .section = @"Tabs & Downloads",
+    .section = @"Tabs",
     .classes = DPClasses(DPDiaTabSwitcher),
     .install = DPInstallCloseFromTabSwitcher,
 };

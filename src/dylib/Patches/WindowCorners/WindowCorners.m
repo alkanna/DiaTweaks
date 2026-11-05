@@ -2,21 +2,38 @@
 #import <objc/message.h>
 
 extern DPPatch DPWindowCorners;
-static const CGFloat DPRadius = 26;
+static const CGFloat DPCornerReach = 26;  // How close to a window corner a view must sit to round with it.
 static char DPRadiusKey, DPPathKey, DPMaskPathKey, DPShadowPathKey;
 #define DPCornerBars (@[ @DPDiaTabStrip, @DPDiaSidebarHeader, @DPDiaSidebarFooter ])
 
 static CGFloat DPCornerRadius(NSWindow *window) { return ((CGFloat (*)(id, SEL))objc_msgSend)(window, @selector(_cornerRadius)); }
+static const CGFloat DPMaxRadius = 26;
+static NSString *const DPRadiusSetting = @"windowCornerRadius";
+
+static NSUserDefaults *DPSettings(void) {
+    static NSUserDefaults *settings;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ settings = [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; });
+    return settings;
+}
+
+static CGFloat DPRadius(void) {
+    id saved = [DPSettings() objectForKey:DPRadiusSetting];
+    return saved ? MIN(MAX([saved doubleValue], 0), DPMaxRadius) : DPMaxRadius;
+}
+
+// AppKit takes a radius under 1 as its default.
+static CGFloat DPWindowRadius(void) { return MAX(1, DPRadius()); }
 
 CGFloat DPWindowCornerGrowth(NSWindow *window) {
     if (!DPWindowCorners.on || !DPIsKind(window, DPDiaWindow)) return 0;
     CGFloat current = DPCornerRadius(window);
-    return DPRadius - [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
+    return DPRadius() - [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
 }
 
 static void DPRoundWindow(NSWindow *window) {
     CGFloat current = DPCornerRadius(window), dia = [DPDiaValue(window, &DPRadiusKey, @(current)) doubleValue];
-    CGFloat target = DPWindowCorners.on ? DPRadius : dia;
+    CGFloat target = DPWindowCorners.on ? DPWindowRadius() : dia;
     DPOverride(window, &DPRadiusKey, @(dia), @(target));
     if (current == target) return;
     ((void (*)(id, SEL, CGFloat))objc_msgSend)(window, @selector(_setCornerRadius:), target);
@@ -28,7 +45,7 @@ static void DPRoundWindow(NSWindow *window) {
 static void DPRoundLayers(CALayer *layer, CGFloat growth) {
     CGFloat dia = [DPDiaValue(layer, &DPRadiusKey, @(layer.cornerRadius)) doubleValue];
     if (dia >= 10) {
-        CGFloat target = MIN(dia + growth, MAX(dia, MIN(CGRectGetWidth(layer.bounds), CGRectGetHeight(layer.bounds)) / 2));
+        CGFloat target = MAX(0, MIN(dia + growth, MAX(dia, MIN(CGRectGetWidth(layer.bounds), CGRectGetHeight(layer.bounds)) / 2)));
         DPOverride(layer, &DPRadiusKey, @(dia), @(target));
         if (layer.cornerRadius != target) layer.cornerRadius = target;
     }
@@ -44,8 +61,8 @@ static void DPRoundCornerItems(NSView *root) {
     DPFindView(root, ^BOOL(NSView *view) {
         if (view == root || view.layer.cornerRadius < 10) return NO;
         NSRect rect = [view convertRect:view.bounds toView:frame], bounds = frame.bounds;
-        BOOL side = NSMinX(rect) < DPRadius || NSMaxX(rect) > NSMaxX(bounds) - DPRadius;
-        BOOL end = NSMinY(rect) < DPRadius || NSMaxY(rect) > NSMaxY(bounds) - DPRadius;
+        BOOL side = NSMinX(rect) < DPCornerReach || NSMaxX(rect) > NSMaxX(bounds) - DPCornerReach;
+        BOOL end = NSMinY(rect) < DPCornerReach || NSMaxY(rect) > NSMaxY(bounds) - DPCornerReach;
         DPRoundLayers(view.layer, side && end ? growth : 0);
         return NO;
     });
@@ -65,10 +82,11 @@ static CGPathRef DPScaledPath(id owner, char *key, CGPathRef current, CGSize siz
 static void DPRoundFloatingLayers(CALayer *layer, CGSize size, CGFloat base, CGFloat growth) {
     if (fabs(layer.bounds.size.width - size.width) < 1 && fabs(layer.bounds.size.height - size.height) < 1 && layer.cornerRadius > 0) {
         CGFloat dia = [DPDiaValue(layer, &DPRadiusKey, @(layer.cornerRadius)) doubleValue];
-        DPOverride(layer, &DPRadiusKey, @(dia), @(dia + growth));
-        if (layer.cornerRadius != dia + growth) layer.cornerRadius = dia + growth;
+        CGFloat target = MAX(0, dia + growth);
+        DPOverride(layer, &DPRadiusKey, @(dia), @(target));
+        if (layer.cornerRadius != target) layer.cornerRadius = target;
     }
-    CGFloat scale = (base + growth) / base;
+    CGFloat scale = MAX(0, base + growth) / base;
     CAShapeLayer *shape = [layer isKindOfClass:CAShapeLayer.class] ? (CAShapeLayer *)layer : nil;
     CAShapeLayer *mask = [layer.mask isKindOfClass:CAShapeLayer.class] ? (CAShapeLayer *)layer.mask : nil;
     CGPathRef path;
@@ -161,9 +179,56 @@ static void DPApplyWindowCorners(DPPatch *patch) {
 
 static NSString *DPVerifyWindowCorners(DPPatch *patch) {
     for (NSWindow *window in NSApp.windows)
-        if (DPIsKind(window, DPDiaWindow) && window.isVisible && (DPCornerRadius(window) == DPRadius) != patch->on)
-            return patch->on ? @"window corners aren't 26 points" : @"window corners stay 26 points";
+        if (DPIsKind(window, DPDiaWindow) && window.isVisible && (DPCornerRadius(window) == DPWindowRadius()) != patch->on)
+            return patch->on ? @"window corners aren't the chosen radius" : @"window corners keep the chosen radius";
     return nil;
+}
+
+@interface DPRadiusRow : NSStackView <NSTextFieldDelegate>
+@property NSSlider *slider;
+@property NSTextField *field;
+@end
+
+@implementation DPRadiusRow
+- (void)tune:(NSControl *)control {
+    double radius = round(MIN(MAX(control.doubleValue, 0), DPMaxRadius));
+    self.slider.doubleValue = self.field.doubleValue = radius;
+    [DPSettings() setDouble:radius forKey:DPRadiusSetting];
+    if (DPWindowCorners.on) DPApplyWindowCorners(&DPWindowCorners);
+}
+
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)command {
+    NSNumber *step = @{ @"moveUp:" : @1, @"moveDown:" : @-1, @"moveUpAndModifySelection:" : @10, @"moveDownAndModifySelection:" : @-10 }[NSStringFromSelector(command)];
+    if (!step) return NO;
+    self.field.doubleValue = textView.string.doubleValue + step.doubleValue;
+    [self tune:self.field];
+    [textView selectAll:nil];
+    return YES;
+}
+@end
+
+static NSArray<NSView *> *DPWindowCornersRows(void) {
+    DPRadiusRow *row = [DPRadiusRow new];
+    row.slider = [NSSlider sliderWithValue:DPRadius() minValue:0 maxValue:DPMaxRadius target:row action:@selector(tune:)];
+    row.field = [NSTextField textFieldWithString:@""];
+    NSNumberFormatter *whole = [NSNumberFormatter new];
+    whole.maximumFractionDigits = 0;
+    row.field.formatter = whole;
+    row.field.doubleValue = DPRadius();
+    row.field.alignment = NSTextAlignmentRight;
+    row.field.target = row.field.delegate = row;
+    row.field.action = @selector(tune:);
+    [row.field.widthAnchor constraintEqualToConstant:44].active = YES;
+    [row.slider setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSTextField *hint = [NSTextField wrappingLabelWithString:@"26 pt is macOS 26, 10 pt is macOS 11 to 15, and 0 is square."];
+    hint.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+    hint.textColor = NSColor.secondaryLabelColor;
+    NSStackView *controls = [NSStackView stackViewWithViews:@[ row.slider, row.field, [NSTextField labelWithString:@"pt"] ]];
+    [row setViews:@[ [NSTextField labelWithString:@"Radius"], controls, hint ] inGravity:NSStackViewGravityTop];
+    row.orientation = NSUserInterfaceLayoutOrientationVertical;
+    row.alignment = NSLayoutAttributeLeading;
+    [controls.widthAnchor constraintEqualToAnchor:row.widthAnchor].active = YES;
+    return @[ row ];
 }
 
 static void DPInstallWindowCorners(void) {
@@ -181,13 +246,14 @@ static void DPInstallWindowCorners(void) {
 
 DP_PATCH(DPWindowCorners) {
     .key = @"windowCorners",
-    .order = 94,
-    .title = @"macOS 26 Window Corners",
-    .detail = @"Round Dia’s windows like other apps on macOS 26, with the page’s corners to match.",
+    .order = 97,
+    .title = @"Window Corners",
+    .detail = @"Round Dia’s windows like other apps on macOS 26, or pick a smaller radius down to square, with the page’s corners to match.",
     .symbol = @"app.fill",
     .tint = @"systemBrownColor",
     .section = @"Window",
     .classes = DPClasses(DPDiaWindow, DPDiaNavigationBar, DPDiaFloatingSidebar, DPDiaWindowBackgroundTile, DPDiaWindowBackground, DPDiaTabStrip, DPDiaSidebarHeader, DPDiaSidebarFooter),
+    .rows = DPWindowCornersRows,
     .install = DPInstallWindowCorners,
     .apply = DPApplyWindowCorners,
     .verify = DPVerifyWindowCorners,

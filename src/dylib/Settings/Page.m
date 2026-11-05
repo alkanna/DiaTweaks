@@ -1,54 +1,87 @@
 #import "Settings.h"
 
+static char DPChoicePatchKey;  // The patch a picker chooses for, when it's an option's.
+
 @implementation DPPageView {
     DPPatch *_patch;
     NSMutableArray<DPPatchSwitch *> *_switches;
     NSTextField *_note;
     NSArray<NSView *> *_rows;
+    NSMutableArray<NSView *> *_optionChoices;  // An option's choice and rows, shown only while it's on.
 }
 
 - (instancetype)initWithPatch:(DPPatch *)patch {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _patch = patch;
     _switches = [NSMutableArray new];
+    _optionChoices = [NSMutableArray new];
     _note = DPLabel(@"", 11, NSFontWeightRegular, NSColor.secondaryLabelColor);
 
     DPPreviewView *preview = [[DPPreviewView alloc] initWithKey:patch->key];
     [preview.heightAnchor constraintEqualToAnchor:preview.widthAnchor multiplier:10.0 / 16].active = YES;
+    NSMutableArray<NSView *> *headingText = [@[
+        DPLabel(patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
+        DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor),
+    ] mutableCopy];
+    if (patch->hint) {
+        NSView *gap = [NSView new];  // A little space between the detail and the tip.
+        [gap.heightAnchor constraintEqualToConstant:5].active = YES;
+        [headingText addObjectsFromArray:@[gap, DPLabel(patch->hint, 11, NSFontWeightRegular, NSColor.secondaryLabelColor)]];
+    }
+    [headingText addObject:_note];
     NSStackView *heading = [NSStackView stackViewWithViews:@[
         DPIconTile(patch->symbol, [NSColor valueForKey:patch->tint]),
-        DPColumn(@[DPLabel(patch->title, 13, NSFontWeightSemibold, NSColor.labelColor),
-                   DPLabel(patch->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), _note], 2),
+        DPColumn(headingText, 2),
     ]];
     heading.spacing = 10;
     heading.alignment = NSLayoutAttributeTop;
     NSMutableArray<NSView *> *views = [NSMutableArray arrayWithObjects:preview, DPGroup(@[DPRow(heading, [self switchFor:patch])]), nil];
 
-    NSMutableArray<NSView *> *options = [NSMutableArray new];
+    // Options sit under their own section's heading, like the tweaks on the main page, and ones this Dia can't use go last.
+    // A patch's own rows name theirs with `identifier`.
+    NSString *const unavailable = @"Not Available in This Version";
+    NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithObject:@"Options"];
+    NSMutableDictionary<NSString *, NSMutableArray<NSView *> *> *groups = [NSMutableDictionary dictionaryWithObject:[NSMutableArray new] forKey:@"Options"];
+    void (^add)(NSString *, NSView *) = ^(NSString *title, NSView *row) {
+        if (!groups[title]) {
+            [titles addObject:title];
+            groups[title] = [NSMutableArray new];
+        }
+        [groups[title] addObject:row];
+    };
+    if (patch->choices) add(@"Options", [self choiceRowFor:patch]);
     DPForEachOption(patch, ^(DPPatch *option) {
+        NSString *title = option->unavailable ? unavailable : option->section ?: @"Options";
         NSMutableArray<NSView *> *lines = [NSMutableArray arrayWithObjects:DPLabel(option->title, 13, NSFontWeightRegular, NSColor.labelColor),
                                            DPLabel(option->detail, 11, NSFontWeightRegular, NSColor.secondaryLabelColor), nil];
         if (option->unavailable) [lines addObject:DPLabel(DPWhyDisabled(option), 11, NSFontWeightRegular, NSColor.secondaryLabelColor)];
-        NSView *text = DPColumn(lines, 2);
-        [options addObject:DPRow(text, [self switchFor:option])];
+        add(title, DPRow(DPColumn(lines, 2), [self switchFor:option]));
+        // An option's own choice and rows sit under its switch, shown while it's on.
+        NSMutableArray<NSView *> *under = [NSMutableArray new];
+        if (option->choices) [under addObject:[self choiceRowFor:option]];
+        for (NSView *view in option->rows ? option->rows() : @[]) {
+            NSView *row = DPRow(view, [NSView new]);
+            [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
+            [under addObject:row];
+        }
+        for (NSView *row in under) {
+            DPSet(row, &DPChoicePatchKey, [NSValue valueWithPointer:option]);
+            add(title, row);
+            [self->_optionChoices addObject:row];
+        }
     });
-    if (patch->choices) {
-        NSMenu *menu = patch->choices();
-        NSPopUpButton *picker = [NSPopUpButton new];
-        picker.menu = menu;
-        picker.controlSize = NSControlSizeSmall;
-        picker.target = self;
-        picker.action = @selector(choose:);
-        for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
-        [options insertObject:DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker) atIndex:0];
-    }
     _rows = patch->rows ? patch->rows() : @[];
     for (NSView *view in _rows) {
         NSView *row = DPRow(view, [NSView new]);
         [view.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12].active = YES;
-        [options addObject:row];
+        add(view.identifier ?: @"Options", row);
     }
-    if (options.count) [views addObjectsFromArray:@[DPHeader(@"Options"), DPGroup(options)]];
+    if ([titles containsObject:unavailable]) {
+        [titles removeObject:unavailable];
+        [titles addObject:unavailable];
+    }
+    for (NSString *title in titles)
+        if (groups[title].count) [views addObjectsFromArray:@[DPHeader(title), DPGroup(groups[title])]];
 
     NSURL *wiki = DPWikiURL(patch);
     NSView *wikiRow = DPLinkRow(DPRow(DPLabel(@"Read more on the wiki", 13, NSFontWeightRegular, NSColor.labelColor),
@@ -71,8 +104,20 @@
     return toggle.withHiddenIcon;
 }
 
+- (NSView *)choiceRowFor:(DPPatch *)patch {
+    NSMenu *menu = patch->choices();
+    NSPopUpButton *picker = [NSPopUpButton new];
+    picker.menu = menu;
+    picker.controlSize = NSControlSizeSmall;
+    picker.target = self;
+    picker.action = @selector(choose:);
+    DPSet(picker, &DPChoicePatchKey, [NSValue valueWithPointer:patch]);
+    for (NSMenuItem *item in menu.itemArray) if ([item.representedObject isEqual:DPChoice(patch)]) [picker selectItem:item];
+    return DPRow(DPLabel(menu.title, 13, NSFontWeightRegular, NSColor.labelColor), picker);
+}
+
 - (void)choose:(NSPopUpButton *)picker {
-    DPSetChoice(_patch, picker.selectedItem.representedObject);
+    DPSetChoice([DPGet(picker, &DPChoicePatchKey) pointerValue] ?: _patch, picker.selectedItem.representedObject);
 }
 
 - (void)sync {
@@ -82,6 +127,33 @@
             BOOL label = [view isKindOfClass:NSTextField.class] && !((NSTextField *)view).editable;
             if ([view isKindOfClass:NSControl.class] && !label) ((NSControl *)view).enabled = self->_patch->on;
             return NO;
+        });
+    // The rows around one that comes or goes slide. One that comes stays clear until there's room for it, then fades in;
+    // its group grows from the bottom, so it would otherwise ride down over the row above.
+    NSMutableArray<NSView *> *appeared = [NSMutableArray new];
+    for (NSView *row in _optionChoices) {
+        BOOL shown = ((DPPatch *)[DPGet(row, &DPChoicePatchKey) pointerValue])->on;
+        if (row.hidden != shown) continue;
+        NSArray<NSView *> *rows = ((NSStackView *)row.superview).arrangedSubviews;
+        NSUInteger i = [rows indexOfObject:row];
+        NSArray<NSView *> *views = i != NSNotFound && i > 0 ? @[row, rows[i - 1]] : @[row];  // With its separator.
+        // Hidden inside an animation, AppKit fades it out while it moves, which leaves a ghost behind.
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0;
+            context.allowsImplicitAnimation = NO;
+            for (NSView *view in views) {
+                view.hidden = !shown;
+                if (shown) view.alphaValue = 0;
+            }
+        }];
+        if (shown) [appeared addObjectsFromArray:views];
+    }
+    if (appeared.count)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.2;
+                for (NSView *view in appeared) view.animator.alphaValue = 1;
+            }];
         });
     _note.stringValue = DPWhyDisabled(_patch) ?: @"";
     _note.hidden = !_note.stringValue.length;

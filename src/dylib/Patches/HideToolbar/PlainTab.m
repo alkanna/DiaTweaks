@@ -94,6 +94,7 @@ DP_PATCH(DPPlainSelectedTab) {
     .symbol = @"paintbrush.fill",
     .tint = @"systemIndigoColor",
     .requires = @"hideToolbar",
+    .section = @"While It's Hidden",
     .classes = DPClasses(DPDiaColorFill, DPDiaTabShape, DPDiaTabStrip),
     .install = DPInstallPlainSelectedTab,
     .apply = DPApplyPlainSelectedTab,

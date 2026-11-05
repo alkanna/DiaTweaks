@@ -1,0 +1,176 @@
+#import "StdPatch/StdPatch.h"
+
+@interface NSObject (DPSwiftFields)
+- (id)safeSwiftValueForKey:(NSString *)key;
+@end
+
+extern DPPatch DPHideSleepingTabs;
+
+static id DPField(id object, NSString *key) {
+    return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
+}
+
+static id DPState(id viewModel) { return DPField(DPField(viewModel, @"stateSubject"), @"currentValue"); }
+
+// The items only come through as a description, so their tab IDs are read out of it.
+static NSArray<NSString *> *DPSwitcherItems(id viewModel) {
+    NSString *items = [DPField(DPState(viewModel), @"items") description] ?: @"";
+    static NSRegularExpression *uuid;
+    if (!uuid) uuid = [NSRegularExpression regularExpressionWithPattern:@"[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" options:0 error:nil];
+    NSMutableArray *tabs = [NSMutableArray new];
+    for (NSTextCheckingResult *match in [uuid matchesInString:items options:0 range:NSMakeRange(0, items.length)])
+        [tabs addObject:[items substringWithRange:match.range]];
+    return tabs;
+}
+
+static NSSet<NSString *> *DPSleepingTabs(id viewModel) {
+    NSDictionary *tabs = DPField(DPField(viewModel, @"delegate"), @"recentTabControllers");
+    NSMutableSet *sleeping = [NSMutableSet new];
+    for (id tab in tabs) {
+        NSString *state = [DPState(DPField(tabs[tab], @"viewModel")) description];
+        if (state && ![state containsString:@"snapshot: Optional("]) [sleeping addObject:[tab description]];
+    }
+    return sleeping;
+}
+
+static NSArray<NSNumber *> *DPShownItems(id list) {
+    id viewModel = DPField(list, @"viewModel");
+    NSSet *sleeping = DPHideSleepingTabs.on ? DPSleepingTabs(viewModel) : nil;
+    NSMutableArray *shown = [NSMutableArray new];
+    [DPSwitcherItems(viewModel) enumerateObjectsUsingBlock:^(NSString *tab, NSUInteger i, BOOL *stop) {
+        if (![sleeping containsObject:tab]) [shown addObject:@(i)];
+    }];
+    return shown.count ? shown : nil;
+}
+
+static NSIndexPath *DPDiaIndexPath(id list, NSIndexPath *path) {
+    NSArray<NSNumber *> *shown = DPShownItems(list);
+    return shown && path.item < (NSInteger)shown.count ? [NSIndexPath indexPathForItem:shown[path.item].integerValue inSection:path.section] : path;
+}
+
+static void DPWatchSwitcherSize(id list);
+
+static NSInteger DPList_count(id self, SEL _cmd, NSCollectionView *view, NSInteger section) {
+    DPWatchSwitcherSize(self);
+    NSArray *shown = DPShownItems(self);
+    return shown ? (NSInteger)shown.count : DPCallOriginal(DPList_count, self, view, section);
+}
+
+// Dia makes the cell at its own index, which can be past the end of the shorter grid.
+static NSIndexPath *DPShownPath;
+
+static NSCollectionViewItem *DPList_item(id self, SEL _cmd, NSCollectionView *view, NSIndexPath *path) {
+    DPShownPath = path;
+    NSCollectionViewItem *item = DPCallOriginal(DPList_item, self, view, DPDiaIndexPath(self, path));
+    DPShownPath = nil;
+    return item;
+}
+
+static NSCollectionViewItem *DPGrid_makeItem(NSCollectionView *self, SEL _cmd, NSUserInterfaceItemIdentifier identifier, NSIndexPath *path) {
+    return DPCallOriginal(DPGrid_makeItem, self, identifier, DPShownPath ?: path);
+}
+
+static NSSize DPList_size(id self, SEL _cmd, NSCollectionView *view, NSCollectionViewLayout *layout, NSIndexPath *path) {
+    return DPCallOriginal(DPList_size, self, view, layout, DPDiaIndexPath(self, path));
+}
+
+static void DPList_select(id self, SEL _cmd, NSCollectionView *view, NSSet<NSIndexPath *> *paths) {
+    NSMutableSet *dia = [NSMutableSet new];
+    for (NSIndexPath *path in paths) [dia addObject:DPDiaIndexPath(self, path)];
+    DPCallOriginal(DPList_select, self, view, dia);
+}
+
+// Dia sizes the switcher for every tab through constraints on its content, so each one it sets is refit to the cells left.
+static const CGFloat DPSwitcherChrome = 152;  // Shadow margin and grid inset, both sides.
+static char DPWatchedKey;
+static BOOL DPFitting;
+
+static void DPFitSwitcherSize(NSLayoutConstraint *size, id list) {
+    NSCollectionView *grid = DPField(list, @"collectionView");
+    NSArray *shown = DPHideSleepingTabs.on ? DPShownItems(list) : nil;
+    if (DPFitting || !grid || !shown) return;
+    NSSize cell = [list collectionView:grid layout:grid.collectionViewLayout sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
+    BOOL width = size.firstAttribute == NSLayoutAttributeWidth;
+    CGFloat step = width ? cell.width : cell.height;
+    if (step <= 0) return;
+    NSInteger dia = MAX(1, lround((size.constant - DPSwitcherChrome) / step));
+    NSInteger columns = MIN((NSInteger)shown.count, dia);
+    NSInteger fit = width ? columns : MIN(dia, ((NSInteger)shown.count + columns - 1) / columns);
+    DPFitting = YES;
+    size.constant = DPSwitcherChrome + fit * step;
+    DPFitting = NO;
+}
+
+@interface DPSwitcherSizeWatch : NSObject
+@property (nonatomic, weak) id list;
+@end
+
+@implementation DPSwitcherSizeWatch
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(NSLayoutConstraint *)size change:(NSDictionary *)change context:(void *)context {
+    DPFitSwitcherSize(size, self.list);
+}
+@end
+
+static void DPWatchSwitcherSize(id list) {
+    NSView *content = [list view];
+    for (NSLayoutConstraint *size in content.constraints) {
+        BOOL dimension = size.firstAttribute == NSLayoutAttributeWidth || size.firstAttribute == NSLayoutAttributeHeight;
+        if (size.firstItem != content || size.secondItem || !dimension || DPGet(size, &DPWatchedKey)) continue;
+        DPSwitcherSizeWatch *watch = [DPSwitcherSizeWatch new];
+        watch.list = list;
+        [size addObserver:watch forKeyPath:@"constant" options:0 context:NULL];
+        DPSet(size, &DPWatchedKey, watch);
+        dispatch_async(dispatch_get_main_queue(), ^{ DPFitSwitcherSize(size, list); });  // Not mid-layout.
+    }
+}
+
+static NSWindowController *DPOpenSwitcher(void) {
+    for (NSWindow *window in NSApp.windows)
+        if (window.visible && DPIsKind(window.windowController, DPDiaTabSwitcher)) return window.windowController;
+    return nil;
+}
+
+static void DPStepPastSleeping(int tries);
+
+static void DPStepSoon(int tries) {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{ DPStepPastSleeping(tries); });
+}
+
+// The switcher opens a moment after the first ⌃⇥, then moves its highlight on each ⌃⇥ until it rests on a loaded tab.
+static void DPStepPastSleeping(int tries) {
+    if (!tries) return;
+    NSWindowController *switcher = DPOpenSwitcher();
+    id viewModel = DPField(switcher, @"viewModel");
+    NSString *focused = [DPField(DPState(viewModel), @"focusedItemID") description];
+    if (!focused) return DPStepSoon(tries - 1);
+    if (![DPSleepingTabs(viewModel) containsObject:focused]) return;
+    NSEventModifierFlags mods = NSEventModifierFlagControl | (NSEvent.modifierFlags & NSEventModifierFlagShift);
+    [NSApp postEvent:[NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:mods timestamp:NSProcessInfo.processInfo.systemUptime
+                                  windowNumber:switcher.window.windowNumber context:nil characters:@"\t" charactersIgnoringModifiers:@"\t" isARepeat:NO keyCode:48]
+             atStart:NO];
+    DPStepSoon(tries - 1);
+}
+
+static void DPInstallHideSleepingTabs(void) {
+    DPHook(DPDiaTabSwitcherList, @selector(collectionView:numberOfItemsInSection:), (IMP)DPList_count);
+    DPHook(DPDiaTabSwitcherList, @selector(collectionView:itemForRepresentedObjectAtIndexPath:), (IMP)DPList_item);
+    DPHook(DPDiaTabSwitcherList, @selector(collectionView:layout:sizeForItemAtIndexPath:), (IMP)DPList_size);
+    DPHook(DPDiaTabSwitcherList, @selector(collectionView:didSelectItemsAtIndexPaths:), (IMP)DPList_select);
+    DPHookClass(NSCollectionView.class, @selector(makeItemWithIdentifier:forIndexPath:), (IMP)DPGrid_makeItem);
+    [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
+        if (DPHideSleepingTabs.on && event.keyCode == 48 && (event.modifierFlags & NSEventModifierFlagControl)) DPStepSoon(20);
+        return event;
+    }];
+}
+
+DP_PATCH(DPHideSleepingTabs) {
+    .key = @"hideSleepingTabs",
+    .order = 86,
+    .title = @"Hide Sleeping Tabs",
+    .detail = @"Leave tabs with nothing loaded, like a pinned tab you closed, out of the tab switcher (⌃⇥) instead of showing them as empty pictures.",
+    .symbol = @"moon.zzz.fill",
+    .tint = @"systemPinkColor",
+    .section = @"Tabs",
+    .classes = DPClasses(DPDiaTabSwitcher, DPDiaTabSwitcherList),
+    .install = DPInstallHideSleepingTabs,
+};

@@ -8,6 +8,9 @@ static void DPDescribe(NSView *view, NSUInteger depth, NSMutableString *out) {
     if (label.length) [out appendFormat:@" label=\"%@\"", label];
     if (view.layer.cornerRadius > 0)
         [out appendFormat:@" radius=%g corners=%lu", view.layer.cornerRadius, (unsigned long)view.layer.maskedCorners];
+    if ([view isKindOfClass:NSTextField.class] && [(NSTextField *)view stringValue].length)
+        [out appendFormat:@" text=\"%@\"", [(NSTextField *)view stringValue]];
+    if ([view isKindOfClass:NSTableRowView.class] && [(NSTableRowView *)view isSelected]) [out appendString:@" selected"];
     if (view.hidden) [out appendString:@" hidden"];
     [out appendString:@"\n"];
     for (NSView *sub in view.subviews) DPDescribe(sub, depth + 1, out);
@@ -30,6 +33,11 @@ static void DPCopyViewTree(void) {
 // Lets a script toggle patches and read the result without touching the screen:
 //     com.diapatches.dev.set, object "hideToolbar=1"   toggles a patch the way its switch does.
 //                             object "windowMaterialChoice=glass.1"   picks a patch's choice the way its menu does.
+//     com.diapatches.dev.type, object "weather"        types into whatever has focus in the front window.
+//                              object "=weather"       replaces all of its text.
+//                              object "@moveDown:"     sends it that command, as the arrow key would.
+//     com.diapatches.dev.methods, object a class name  writes its methods, and those of a live one's delegate and data
+//                             source, to methods.txt beside the dylib.
 //     com.diapatches.dev.dump                          writes every window's view tree to views.txt beside the dylib.
 static void DPListenForScripts(void) {
     NSDistributedNotificationCenter *center = NSDistributedNotificationCenter.defaultCenter;
@@ -39,6 +47,38 @@ static void DPListenForScripts(void) {
         if (patch) DPSetPatch(patch, parts[1].boolValue, YES);
         for (NSUInteger i = 0; parts.count == 2 && i < DPPatchCount; i++)
             if ([DPPatches[i]->choice isEqualToString:parts[0]]) DPSetChoice(DPPatches[i], parts[1]);
+    }];
+    [center addObserverForName:@"com.diapatches.dev.type" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        // Dia needn't be the active app, so its frontmost window stands in for the key window.
+        id responder = (NSApp.keyWindow ?: NSApp.orderedWindows.firstObject).firstResponder;
+        if (![responder isKindOfClass:NSTextView.class] || ![note.object isKindOfClass:NSString.class]) return;
+        NSString *text = note.object;
+        // Dia handles some commands by reading the key that sent them, which a script has none of.
+        if ([text hasPrefix:@"@"]) @try { [responder doCommandBySelector:NSSelectorFromString([text substringFromIndex:1])]; } @catch (NSException *e) {}
+        else if ([text hasPrefix:@"="]) [responder insertText:[text substringFromIndex:1] replacementRange:NSMakeRange(0, [[responder string] length])];
+        else [responder insertText:text replacementRange:[responder selectedRange]];
+    }];
+    [center addObserverForName:@"com.diapatches.dev.methods" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+        NSMutableString *out = [NSMutableString new];
+        NSView *live = DPFindViews([note.object UTF8String]).firstObject;
+        NSMutableArray *classes = [NSMutableArray arrayWithObjects:note.object, nil];
+        for (NSString *key in @[@"delegate", @"dataSource"])
+            if ([live respondsToSelector:NSSelectorFromString(key)]) {
+                id value = [live valueForKey:key];
+                [out appendFormat:@"%@: %s\n", key, value ? object_getClassName(value) : "nil"];
+                if (value) [classes addObject:@(object_getClassName(value))];
+            }
+        for (NSString *name in classes)
+            for (Class cls = NSClassFromString(name); cls && cls != NSObject.class && cls != NSView.class && cls != NSResponder.class; cls = class_getSuperclass(cls)) {
+                unsigned count = 0;
+                Method *methods = class_copyMethodList(cls, &count);
+                [out appendFormat:@"== %s\n", class_getName(cls)];
+                for (unsigned i = 0; i < count; i++) [out appendFormat:@"  %s %s\n", sel_getName(method_getName(methods[i])), method_getTypeEncoding(methods[i])];
+                free(methods);
+            }
+        Dl_info dylib;
+        dladdr((const void *)DPInstallDevTools, &dylib);
+        [out writeToFile:[@(dylib.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:@"methods.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }];
     [center addObserverForName:@"com.diapatches.dev.dump" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *_) {
         NSMutableString *out = [NSMutableString new];
@@ -54,6 +94,7 @@ static void DPListenForScripts(void) {
 void DPInstallDevTools(void) {
     if (![[[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"] boolForKey:@"devTools"]) return;
     DPListenForScripts();
+    DPTraceLayoutLoops();
     DPOnLaunch(^{
         DPAddMenuItem(@"Help", @"DiaPatches: Copy View Tree", ^{ DPCopyViewTree(); });
         NSMenu *debug = [[NSMenu alloc] initWithTitle:@"Debug"];

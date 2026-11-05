@@ -8,6 +8,7 @@
 // subjects are dropped. Matching words, not numbers: numbers let a small model (about 3B parameters) fall into
 // repeating one value for every tab. Sampling is greedy, so the same tabs always give the same groups.
 import Foundation
+import XPC
 #if canImport(FoundationModels)
 import FoundationModels
 
@@ -99,9 +100,44 @@ private func DPTidyUnavailable(_ availability: SystemLanguageModel.Availability)
     case .available: return nil
     case .unavailable(.appleIntelligenceNotEnabled): return "Turn on Apple Intelligence in System Settings to use Tidy Tabs."
     case .unavailable(.deviceNotEligible): return "This Mac can't run Apple Intelligence."
-    case .unavailable(.modelNotReady): return "Apple Intelligence is still getting ready. Try again in a few minutes."
+    case .unavailable(.modelNotReady): return DPTidyIneligibleReason() ?? "Apple Intelligence is still downloading. Try again in a few minutes."
     default: return "Apple Intelligence isn't available."
     }
+}
+
+// FoundationModels says modelNotReady both while the model downloads and when macOS won't download it at all, because
+// a setting rules Apple Intelligence out. macOS's eligibility check (domain GREYMATTER) says which: each input is 3 when
+// it passes and 2 when it fails, and its context holds the languages it compared.
+private func DPTidyIneligibleReason() -> String? {
+    typealias Domain = @convention(c) (UnsafePointer<CChar>) -> Int
+    typealias Answer = @convention(c) (Int, UnsafeMutablePointer<UInt64>, UnsafeMutablePointer<UInt64>,
+                                       UnsafeMutablePointer<UnsafeMutableRawPointer?>, UnsafeMutablePointer<UnsafeMutableRawPointer?>) -> Int32
+    guard let domainSymbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "os_eligibility_domain_for_name"),
+          let answerSymbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "os_eligibility_get_domain_answer") else { return nil }
+    let domain = unsafeBitCast(domainSymbol, to: Domain.self)("OS_ELIGIBILITY_DOMAIN_GREYMATTER")
+    var answer: UInt64 = 0, source: UInt64 = 0
+    var statusPointer: UnsafeMutableRawPointer?, contextPointer: UnsafeMutableRawPointer?
+    guard unsafeBitCast(answerSymbol, to: Answer.self)(domain, &answer, &source, &statusPointer, &contextPointer) == 0,
+          let statusPointer else { return nil }
+    // Both come back retained.
+    let status = Unmanaged<AnyObject>.fromOpaque(statusPointer).takeRetainedValue() as! xpc_object_t
+    let context = contextPointer.map { Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as! xpc_object_t }
+    let fails = { (input: String) in xpc_dictionary_get_int64(status, "OS_ELIGIBILITY_INPUT_" + input) == 2 }
+    if fails("DEVICE_CLASS") || fails("GENERATIVE_MODEL_SYSTEM") { return "This Mac can't run Apple Intelligence." }
+    if fails("EXTERNAL_BOOT_DRIVE") { return "Apple Intelligence doesn't work while your Mac starts up from an external drive." }
+    if fails("COUNTRY_LOCATION") || fails("COUNTRY_BILLING") { return "Apple Intelligence isn't available in your country or region yet." }
+    if fails("DEVICE_REGION_CODE") { return "Apple Intelligence isn't available with your Mac's region. Change it in System Settings › General › Language & Region." }
+    if fails("DEVICE_LANGUAGE") { return "Apple Intelligence doesn't support your Mac's language yet. Change it in System Settings › General › Language & Region." }
+    if fails("SIRI_LANGUAGE") { return "Apple Intelligence doesn't support Siri's language yet. Change it in System Settings › Apple Intelligence & Siri." }
+    if fails("DEVICE_AND_SIRI_LANGUAGE_MATCH") {
+        let name = { (code: String) in Locale.current.localizedString(forIdentifier: code) ?? code }
+        let devices = context.flatMap { xpc_dictionary_get_array($0, "OS_ELIGIBILITY_CONTEXT_ELIGIBLE_DEVICE_LANGUAGES") }
+        guard let devices, xpc_array_get_count(devices) > 0, let mac = xpc_array_get_string(devices, 0) else {
+            return "Apple Intelligence needs Siri set to the same language as your Mac. Change it in System Settings › Apple Intelligence & Siri."
+        }
+        return "Apple Intelligence needs Siri set to the same language as your Mac, \(name(String(cString: mac))). Change it in System Settings › Apple Intelligence & Siri."
+    }
+    return answer == 2 ? "Apple Intelligence isn't available with this Mac's settings." : nil
 }
 #endif
 

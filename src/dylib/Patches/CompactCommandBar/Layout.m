@@ -27,26 +27,31 @@ static void DPCommandBar_setFrameSize(NSView *self, SEL _cmd, NSSize size) {
     DPCallOriginal(DPCommandBar_setFrameSize, self, NSMakeSize(size.width, size.height + trim));
 }
 
-// Dia doesn't resize an open popover when the switch flips.
-void DPResizePopovers(void) {
-    for (NSView *popover in DPFindViews(DPDiaPopover)) {
-        if (!DPCommandBarPart(popover, DPDiaCommandBar)) continue;
-        NSRect before = popover.frame;
-        [popover setFrameSize:NSMakeSize(NSWidth(before), NSHeight(before) + DPTrim(popover))];
-        if (!popover.superview.isFlipped) [popover setFrameOrigin:NSMakePoint(NSMinX(before), NSMaxY(before) - NSHeight(popover.frame))];
-    }
-}
-
 static void DPPopover_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     DPCallOriginal(DPPopover_setFrameOrigin, self, origin);
     NSView *commandBar = DPCommandBarPart(self, DPDiaCommandBar);
     if (DPCompactToolbar(commandBar)) commandBar.needsLayout = YES;
 }
 
+// Dia sizes the popover or panel only when it wants a new size, so one whose command bar settles later, as when the switch
+// flips, the buttons' labels arrive or the new tab page comes back into a window, is trimmed again here.
+static void DPRefit(NSView *commandBar) {
+    NSView *box = commandBar.superview;
+    while (box && !DPIsKind(box, DPDiaPopover) && !(DPIsKind(box, DPDiaAssistantPanel) && DPTrimsPanel(box))) box = box.superview;
+    if (!box) return;
+    NSRect before = box.frame;
+    NSSize full = NSMakeSize(NSWidth(before), NSHeight(before) + DPTrim(box));
+    if (fabs(full.height - DPCompactSize(box, full).height - DPTrim(box)) < 0.5) return;
+    [box setFrameSize:full];
+    if (DPIsKind(box, DPDiaPopover) && !box.superview.isFlipped) [box setFrameOrigin:NSMakePoint(NSMinX(before), NSMaxY(before) - NSHeight(box.frame))];
+    box.superview.superview.needsLayout = YES;  // Moves the new tab page's chat usage banner under the panel.
+}
+
 // The row moves up over the input, keeping Go at the trailing edge. The popover can run past the window's top, so Go
 // centers in the part that shows.
 static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBar_layout, self);
+    DPRefit(self);
     NSView *toolbar = DPCommandBarPart(self, DPDiaCommandBarToolbar);
     NSStackView *stack = toolbar.subviews.firstObject;
     if (![stack isKindOfClass:NSStackView.class]) return;

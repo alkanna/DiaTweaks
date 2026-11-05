@@ -20,7 +20,7 @@ static void DPInstallHideTrafficLights(void) { DPHook(DPDiaSidebarHeader, @selec
 
 DP_PATCH(DPHideTrafficLights) {
     .key = @"hideTrafficLights",
-    .order = 95,
+    .order = 98,
     .title = @"Hide Window Controls",
     .detail = @"Hide the close, minimize and zoom buttons. ⌘W, ⌘M and the Window menu still work.",
     .symbol = @"ellipsis",

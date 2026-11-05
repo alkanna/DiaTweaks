@@ -48,8 +48,6 @@ void DPSetTrim(NSView *container, CGFloat trim) {
 
 void DPApplyCompactCommandBar(DPPatch *patch) {
     for (NSView *commandBar in DPFindViews(DPDiaCommandBar)) commandBar.needsLayout = YES;
-    DPResizeNewTabPanels();
-    DPResizePopovers();
 }
 
 static NSString *DPVerifyCompactCommandBar(DPPatch *patch) {
