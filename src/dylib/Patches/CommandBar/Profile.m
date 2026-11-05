@@ -142,8 +142,26 @@ static void DPWalkBookmarks(NSDictionary *node, NSMutableArray<DPBarItem *> *ite
     for (id child in children) if ([child isKindOfClass:NSDictionary.class]) DPWalkBookmarks(child, items);
 }
 
+// Every profile holds the same tree (Favorites, then each space's pinned tabs), but some stop updating
+// their plain Bookmarks file and only write EncryptedBookmarks2. So read the newest copy.
+// ponytail: if Dia ever stops writing plain Bookmarks everywhere, decrypt EncryptedBookmarks2 with the Safe Storage key.
+static NSString *DPBookmarksPath(void) {
+    NSString *best = DPBarProfilePath(@"Bookmarks");
+    NSDate *newest = [NSFileManager.defaultManager attributesOfItemAtPath:best error:nil].fileModificationDate;
+    id profile = DPReadJSONObject([DPUserData() stringByAppendingPathComponent:@"Local State"])[@"profile"];
+    id cache = [profile isKindOfClass:NSDictionary.class] ? profile[@"info_cache"] : nil;
+    if (![cache isKindOfClass:NSDictionary.class]) return best;
+    for (NSString *folder in cache) {
+        if ([folder hasPrefix:@"."] || [folder containsString:@"/"]) continue;
+        NSString *path = DPPathIn(folder, @"Bookmarks");
+        NSDate *date = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil].fileModificationDate;
+        if (date && (!newest || [date compare:newest] == NSOrderedDescending)) best = path, newest = date;
+    }
+    return best;
+}
+
 NSArray<DPBarItem *> *DPBarLoadBookmarks(void) {
-    id roots = DPReadJSONObject(DPBarProfilePath(@"Bookmarks"))[@"roots"];
+    id roots = DPReadJSONObject(DPBookmarksPath())[@"roots"];
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     if (![roots isKindOfClass:NSDictionary.class]) return items;
     for (id root in [roots allValues]) if ([root isKindOfClass:NSDictionary.class]) DPWalkBookmarks(root, items);
@@ -180,8 +198,10 @@ NSArray<DPBarItem *> *DPBarLoadHistory(NSArray<NSString *> *words) {
         }
         [where appendFormat:@" AND (%@)", [any componentsJoinedByString:@" OR "]];
     }
-    NSString *sql = [NSString stringWithFormat:@"SELECT url, title, visit_count, typed_count, last_visit_time FROM urls WHERE %@ "
-                                                "ORDER BY typed_count * 2 + visit_count DESC, last_visit_time DESC LIMIT 80", where];
+    // Most visited alone leaves out pages from the last few days once a query matches more than the limit.
+    NSString *sql = [NSString stringWithFormat:@"SELECT url, title, visit_count, typed_count, last_visit_time FROM urls WHERE rowid IN "
+                                                "(SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY typed_count * 2 + visit_count DESC, last_visit_time DESC LIMIT 80) "
+                                                "UNION SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY last_visit_time DESC LIMIT 40))", where];
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     double now = (NSDate.date.timeIntervalSince1970 + 11644473600.0) * 1e6;  // Chromium time: microseconds since 1601.
     DPBarQueryProfile(nil, @"History", sql, args, ^(NSArray *columns) {

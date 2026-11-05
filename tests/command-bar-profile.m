@@ -21,6 +21,7 @@ static BOOL DPLockedFromOutside(const char *path) {
 
 int main(void) {
     NSString *root = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Dia/User Data"];
+    DPBarDropProfileSnapshot();  // Clones from an earlier run would hide rows added since.
     NSString *history = nil;  // Ends up as Profile 1's, the space the lock check below reads.
     for (NSArray<NSString *> *space in @[@[@"Default", @"https://first.example/", @"First"], @[@"Profile 1", @"https://second.example/", @"Second"]]) {
         NSString *folder = [root stringByAppendingPathComponent:space[0]];
@@ -31,6 +32,9 @@ int main(void) {
         sqlite3_open(history.fileSystemRepresentation, &db);
         NSString *sql = [NSString stringWithFormat:@"CREATE TABLE urls (url, title, visit_count, typed_count, last_visit_time, hidden);"
                                                     "INSERT INTO urls VALUES ('%@', '%@ example', 5, 1, 13300000000000000, 0);", space[1], space[2]];
+        // More popular pages than the limit, and one visited once just now that must still show up.
+        for (int i = 0; i < 100; i++) sql = [sql stringByAppendingFormat:@"INSERT INTO urls VALUES ('https://busy.test/%d', 'Busy %d', 50, 0, 13300000000000000, 0);", i, i];
+        sql = [sql stringByAppendingString:@"INSERT INTO urls VALUES ('https://fresh.test/', 'Busy fresh', 1, 0, 13400000000000000, 0);"];
         sqlite3_exec(db, sql.UTF8String, NULL, NULL, NULL);
         sqlite3_close(db);
     }
@@ -48,7 +52,19 @@ int main(void) {
         NSArray<DPBarItem *> *rows = DPBarLoadHistory(@[@"example"]);
         if (rows.count != 1 || ![rows[0].title isEqualToString:pair[1]]) failures++, NSLog(@"FAIL space %@ read %@", pair[0], rows.firstObject.title);
     }
+    DPBarUseSpace(@"Space 1");
+    if (![[DPBarLoadHistory(@[@"busy"]) valueForKey:@"title"] containsObject:@"Busy fresh"]) failures++, NSLog(@"FAIL recent history page left out");
+
+    // Profile 1's plain Bookmarks went stale, so Default's newer copy wins even from Repos GH.
+    for (NSArray<NSString *> *copy in @[@[@"Default", @"Fresh pin", @0], @[@"Profile 1", @"Stale pin", @-86400]]) {
+        NSDictionary *tree = @{@"roots": @{@"bookmark_bar": @{@"type": @"folder", @"children": @[@{@"type": @"url", @"name": copy[1], @"url": @"https://pin.test/"}]}}};
+        NSString *path = [[root stringByAppendingPathComponent:copy[0]] stringByAppendingPathComponent:@"Bookmarks"];
+        [[NSJSONSerialization dataWithJSONObject:tree options:0 error:nil] writeToFile:path atomically:YES];
+        [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: [NSDate dateWithTimeIntervalSinceNow:[(NSNumber *)copy[2] doubleValue]]} ofItemAtPath:path error:nil];
+    }
     DPBarUseSpace(@"Repos GH");
+    if (![[DPBarLoadBookmarks().firstObject title] isEqualToString:@"Fresh pin"]) failures++, NSLog(@"FAIL read a stale Bookmarks file");
+
     DPBarLoadHistory(@[@"example"]);
     if (!DPLockedFromOutside(history.fileSystemRepresentation)) failures++, NSLog(@"FAIL reading dropped Dia's lock");
     if (!failures) NSLog(@"command bar profile: ok");
