@@ -3,7 +3,8 @@
 
 @implementation DPBarSources {
     NSArray<DPBarItem *> *_commands, *_pages, *_tabs, *_bookmarks;
-    NSString *_searchTemplate, *_suggestTemplate, *_activeURL;
+    NSString *_searchTemplate, *_suggestTemplate, *_activeURL, *_space;
+    NSArray<NSDictionary *> *_picks;  // Touched on _queue only.
     BOOL _private;
     NSURLSession *_session;
     NSURLSessionTask *_suggestTask;
@@ -26,6 +27,7 @@
     NSString *space = DPBarSpaceOfWindow(window);
     // Private windows get their own tabs and nothing from the profile. Nothing goes to the search engine either.
     _private = !space;
+    _space = space;
     DPBarNoteActiveTab(window);
     DPBarUseSpace(space);
     _icons.disabled = _private;
@@ -38,6 +40,7 @@
     NSString *suggest = nil;
     _searchTemplate = DPBarLoadSearchTemplate(&suggest);
     _suggestTemplate = _private ? nil : suggest;
+    if (!_private) dispatch_async(_queue, ^{ [self picks]; });  // Read now so the first keystroke doesn't wait on the file.
     [_icons prepare];
 }
 
@@ -45,10 +48,34 @@
     return DPSearchURL(_searchTemplate, [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]);
 }
 
+static NSURL *DPPicksURL(void) {
+    return [NSURL fileURLWithPath:[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
+                                   stringByAppendingPathComponent:@"DiaPatches/command-bar-picks.plist"]];
+}
+
+- (NSArray<NSDictionary *> *)picks {
+    if (!_picks) _picks = [NSArray arrayWithContentsOfURL:DPPicksURL() error:nil] ?: @[];
+    return _picks;
+}
+
+- (void)notePick:(NSString *)typed key:(NSString *)key {
+    NSString *input = [typed stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
+    // Private windows leave nothing behind.
+    if (_private || !input.length || !key.length) return;
+    key = DPBarURLKey(key);
+    NSString *space = _space;
+    dispatch_async(_queue, ^{
+        self->_picks = DPBarAddPick([self picks], input, key, space, NSDate.date.timeIntervalSince1970);
+        [NSFileManager.defaultManager createDirectoryAtURL:DPPicksURL().URLByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+        [self->_picks writeToURL:DPPicksURL() error:nil];
+    });
+}
+
 static void DPAddMatches(NSMutableArray<DPBarItem *> *all, NSArray<DPBarItem *> *list, NSArray<NSString *> *words, NSUInteger queryLength) {
     for (DPBarItem *item in list) {
-        item.tier = DPBarTier(item.kind, DPBarMatchOf(words, item.title, item.url), queryLength);
+        item.tier = DPBarTier(item.kind, DPBarMatchItem(words, item), queryLength);
         item.rank = item.frecency;
+        item.learned = NO;
         if (item.tier >= 0) [all addObject:item];
     }
 }
@@ -58,9 +85,8 @@ static NSMutableArray<DPBarItem *> *DPRanked(NSMutableArray<DPBarItem *> *all) {
     NSMutableArray<DPBarItem *> *ranked = [NSMutableArray new];
     NSMutableSet<NSString *> *keys = [NSMutableSet new];
     NSCountedSet *perSite = [NSCountedSet new], *perTitle = [NSCountedSet new];
-    NSCharacterSet *slash = [NSCharacterSet characterSetWithCharactersInString:@"/"];
     for (DPBarItem *item in all) {
-        NSString *key = item.url ? [item.url stringByTrimmingCharactersInSet:slash] : item.title;
+        NSString *key = item.url ? DPBarURLKey(item.url) : item.title;
         NSString *site = item.url ? [NSURL URLWithString:item.url].host : nil;
         BOOL history = item.kind == DPBarKindHistory;
         NSString *own = item.kind == DPBarKindTab && key ? [NSString stringWithFormat:@"%@ %@", item.space, key] : key;
@@ -99,6 +125,7 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
     NSArray<DPBarItem *> *commands = _commands, *pages = _pages, *tabs = _tabs, *bookmarks = _bookmarks;
     NSString *searchURL = [self searchURLFor:text];
     BOOL isPrivate = _private;
+    NSString *space = _space;
     dispatch_async(_queue, ^{
         // ponytail: racy read of _latest. Worst case is one wasted scan, since `done` rechecks on main.
         if (generation != self->_latest) return;
@@ -117,6 +144,10 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
             if (item.kind == DPBarKindTab) item.rank = MAX(item.rank, byURL[item.url].rank + 0.5);
             if (item.kind == DPBarKindBookmark) item.rank = MAX(item.rank, byURL[item.url].rank + 0.25);
         }
+
+        // Only rows that exist now get lifted. Rows made from picks alone would bring back pages deleted from history.
+        // ponytail: so a pick past the history limit stays hidden. Ask SQL for the picked URLs too if that bites.
+        if (!isPrivate) DPBarLiftLearned(all, DPBarLearnedPicks([self picks], query, space, NSDate.date.timeIntervalSince1970));
 
         NSMutableArray<DPBarItem *> *ranked = DPRanked(all);
         // An address comes first so Return opens it. A search comes second if the top result is strong.
@@ -173,6 +204,7 @@ static DPBarItem *DPTypedItem(NSString *text, NSString *searchURL) {
         NSURLComponents *parts = [NSURLComponents componentsWithString:item.url];
         NSString *host = parts.host.lowercaseString;
         if (!host.length || !parts.scheme.length) return nil;
+        if (item.learned && parts.path.length > 1) return nil;  // Completing to the site would skip the page picked before.
         NSString *site = [host hasPrefix:@"www."] ? [host substringFromIndex:4] : host;
         NSString *port = parts.port ? [@":" stringByAppendingString:parts.port.stringValue] : @"";
         site = [site stringByAppendingString:port];

@@ -13,7 +13,9 @@ typedef NS_ENUM(NSInteger, DPBarKind) {
     DPBarKindSuggestion,
 };
 
-typedef NS_ENUM(NSInteger, DPBarMatch) { DPBarMatchNone, DPBarMatchContains, DPBarMatchPrefix, DPBarMatchExact };
+typedef NS_ENUM(NSInteger, DPBarMatch) { DPBarMatchNone, DPBarMatchTypo, DPBarMatchContains, DPBarMatchPrefix, DPBarMatchExact };
+
+@class DPBarWords;
 
 @interface DPBarItem : NSObject
 @property (nonatomic) DPBarKind kind;
@@ -22,6 +24,8 @@ typedef NS_ENUM(NSInteger, DPBarMatch) { DPBarMatchNone, DPBarMatchContains, DPB
 @property (nonatomic) NSInteger tier;  // Lower lists first.
 @property (nonatomic) NSInteger profileIndex;
 @property (nonatomic) BOOL showsSpace, windowShowsSpace;
+@property (nonatomic) BOOL learned;  // Picked before for what's typed.
+@property (nonatomic, strong) DPBarWords *words;  // DPBarMatchItem's cache. Title and URL must not change after a match.
 @property (nonatomic) double frecency, rank;
 @end
 
@@ -32,11 +36,20 @@ NSString *DPLikeEscape(NSString *text);
 NSString *DPPrettyURL(NSString *url);
 NSString *DPShortcutText(NSString *key, NSEventModifierFlags modifiers);
 DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *url);
+DPBarMatch DPBarMatchItem(NSArray<NSString *> *words, DPBarItem *item);
+NSString *DPBarURLKey(NSString *url);  // Same page, same key: host case and trailing slashes don't count.
 NSInteger DPBarTier(DPBarKind kind, DPBarMatch match, NSUInteger queryLength);  // Negative means drop it.
 void DPBarSortItems(NSMutableArray<DPBarItem *> *items);
 void DPBarSortByRecency(NSMutableArray<DPBarItem *> *tabs, NSDictionary<NSString *, NSNumber *> *lastUsed);
 NSMutableArray<DPBarItem *> *DPBarArrangeTabs(NSArray<DPBarItem *> *tabs, NSString *space, NSString *windowId);
 BOOL DPBarReturnTakesCompletion(DPBarKind topRow, BOOL forceNewTab);
+// Visits as "chromiumTime:transitionType,..." from newest.
+double DPBarVisitFrecency(NSString *visits, double now, double visitCount);
+// Picks are plist dictionaries, newest first. `input` is what was typed, `key` the URL, or the title for a command.
+NSArray<NSDictionary *> *DPBarAddPick(NSArray<NSDictionary *> *picks, NSString *input, NSString *key, NSString *space, NSTimeInterval now);
+// Key to score for picks made after typing something that starts with `query`.
+NSDictionary<NSString *, NSNumber *> *DPBarLearnedPicks(NSArray<NSDictionary *> *picks, NSString *query, NSString *space, NSTimeInterval now);
+void DPBarLiftLearned(NSArray<DPBarItem *> *items, NSDictionary<NSString *, NSNumber *> *learned);
 NSString *DPSuggestURL(NSString *suggestTemplate, NSString *text);
 NSArray<NSString *> *DPParseSuggestions(NSData *json, NSString *query);
 
@@ -81,6 +94,7 @@ void DPBarQueryProfile(NSString *space, NSString *file, NSString *sql, NSArray *
 // What to complete `text` to ("git" gives "github.com"). `url` gets the address behind it.
 - (NSString *)completionFor:(NSString *)text inItems:(NSArray<DPBarItem *> *)items url:(NSString **)url;
 - (NSString *)searchURLFor:(NSString *)text;
+- (void)notePick:(NSString *)typed key:(NSString *)key;  // `key` is the URL, or the title for a command.
 @end
 
 BOOL DPCommandBarShow(NSWindow *window, BOOL newTab);  // NO if `window` isn't a browser window.

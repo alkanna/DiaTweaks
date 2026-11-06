@@ -112,17 +112,25 @@
         item.url = typedURL;
     }
     if (item.kind == DPBarKindCommand) {
+        [self.sources notePick:query key:item.title];
         NSMenuItem *entry = item.menuItem;
         dispatch_async(dispatch_get_main_queue(), ^{ [NSApp sendAction:entry.action to:entry.target from:entry]; });
         return;
     }
-    if (item.kind == DPBarKindTab) return DPBarFocusTab(item.windowId, item.profileIndex, item.tabId);
+    if (item.kind == DPBarKindTab) {
+        [self.sources notePick:query key:item.url];
+        return DPBarFocusTab(item.windowId, item.profileIndex, item.tabId);
+    }
     NSString *url = item.url;
     // An accepted completion keeps its http and port.
     if (item.kind == DPBarKindURL) url = completionURL ?: ([text isEqualToString:item.title] ? url : typedURL);
     // Clicked before the results caught up, so search what's typed now.
     if (item.kind == DPBarKindSearch && ![query isEqualToString:item.title]) url = [self.sources searchURLFor:query];
     if (!url) return;
+    // Typed text that isn't an address ends up as a search, which isn't worth learning.
+    BOOL search = item.kind == DPBarKindSearch || item.kind == DPBarKindSuggestion || (item.kind == DPBarKindURL && !completionURL && !DPResolveURL(text));
+    if (!search)
+        [self.sources notePick:query key:url];
     BOOL newTab = self.opensNewTab || forceNewTab;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (newTab) DPBarOpenInNewTab(window, url);

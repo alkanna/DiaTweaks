@@ -148,30 +148,196 @@ NSString *DPShortcutText(NSString *key, NSEventModifierFlags modifiers) {
     return text;
 }
 
-DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *url) {
-    NSString *lowerTitle = title.lowercaseString ?: @"", *lowerURL = url.lowercaseString ?: @"";
-    NSString *host = [NSURL URLWithString:url].host.lowercaseString ?: @"";
-    if ([host hasPrefix:@"www."]) host = [host substringFromIndex:4];
-    if ([lowerTitle isEqualToString:[words componentsJoinedByString:@" "]]) return DPBarMatchExact;
+static void DPAddTokens(NSMutableArray<NSString *> *tokens, NSString *text) {
+    for (NSString *token in [text.lowercaseString componentsSeparatedByCharactersInSet:NSCharacterSet.alphanumericCharacterSet.invertedSet])
+        if (token.length) [tokens addObject:token];
+}
+
+// Site name and path words. Leaves out www and the TLD, or "com" would start every address,
+// and the query, or "utm" and "q" would start every tracked link.
+static NSArray<NSString *> *DPURLTokens(NSURL *parsed) {
+    NSMutableArray<NSString *> *labels = [[parsed.host.lowercaseString componentsSeparatedByString:@"."] mutableCopy] ?: [NSMutableArray new];
+    if (labels.count > 1) [labels removeLastObject];
+    [labels removeObject:@"www"];
+    NSMutableArray<NSString *> *tokens = [NSMutableArray new];
+    DPAddTokens(tokens, [labels componentsJoinedByString:@"."]);
+    DPAddTokens(tokens, parsed.path);
+    return tokens;
+}
+
+// One substitution, insertion, deletion or swap of neighbors.
+// Characters rather than strings, since this runs against most rows on every keystroke.
+static BOOL DPOneEditApart(const unichar *a, NSUInteger m, const unichar *b, NSUInteger n) {
+    if (m > n + 1 || n > m + 1) return NO;
+    NSUInteger i = 0;
+    while (i < m && i < n && a[i] == b[i]) i++;
+    if (i == m && i == n) return YES;
+    // Past the first difference, skip one character in the longer word, or in both when they're the same length.
+    NSUInteger skipA = i + (m >= n), skipB = i + (n >= m);
+    if (!memcmp(a + skipA, b + skipB, (m - skipA) * sizeof(unichar))) return YES;
+    return m == n && i + 1 < m && a[i] == b[i + 1] && a[i + 1] == b[i] && !memcmp(a + i + 2, b + i + 2, (m - i - 2) * sizeof(unichar));
+}
+
+// Also against the start of a longer word, so a typo in a half typed word still finds it.
+static BOOL DPTypoOf(NSString *word, NSArray<NSString *> *tokens) {
+    unichar typed[64], token[65];
+    NSUInteger m = word.length;
+    if (m > 64) return NO;
+    [word getCharacters:typed range:NSMakeRange(0, m)];
+    for (NSString *candidate in tokens) {
+        NSUInteger n = MIN(candidate.length, m + 1);
+        if (n + 1 < m) continue;
+        [candidate getCharacters:token range:NSMakeRange(0, n)];
+        for (NSUInteger length = m - 1; length <= n; length++) if (DPOneEditApart(typed, m, token, length)) return YES;
+    }
+    return NO;
+}
+
+static BOOL DPAnyHasPrefix(NSArray<NSString *> *tokens, NSString *word) {
+    for (NSString *token in tokens) if ([token hasPrefix:word]) return YES;
+    return NO;
+}
+
+// What matching needs from a row, worked out once per row rather than on every keystroke.
+@interface DPBarWords : NSObject {
+  @public
+    NSString *lowerTitle, *lowerURL, *host, *initials;
+    NSArray<NSString *> *titleTokens, *urlTokens;
+}
+@end
+@implementation DPBarWords
+@end
+
+static DPBarWords *DPWordsOf(NSString *title, NSString *url) {
+    DPBarWords *words = [DPBarWords new];
+    words->lowerTitle = title.lowercaseString ?: @"";
+    words->lowerURL = url.lowercaseString ?: @"";
+    NSURL *parsed = url ? [NSURL URLWithString:url] : nil;
+    NSString *host = parsed.host.lowercaseString ?: @"";
+    words->host = [host hasPrefix:@"www."] ? [host substringFromIndex:4] : host;
+    NSMutableArray<NSString *> *titleTokens = [NSMutableArray new];
+    DPAddTokens(titleTokens, words->lowerTitle);
+    words->titleTokens = titleTokens;
+    words->urlTokens = parsed ? DPURLTokens(parsed) : @[];
+    NSMutableString *initials = [NSMutableString new];  // "nw" for New Window.
+    for (NSString *token in titleTokens) [initials appendString:[token substringToIndex:1]];
+    words->initials = initials;
+    return words;
+}
+
+static DPBarMatch DPMatch(NSArray<NSString *> *words, DPBarWords *row) {
+    if ([row->lowerTitle isEqualToString:[words componentsJoinedByString:@" "]]) return DPBarMatchExact;
     DPBarMatch match = DPBarMatchPrefix;
     for (NSString *word in words) {
-        if ([host hasPrefix:word] || [lowerTitle hasPrefix:word] || [lowerTitle containsString:[@" " stringByAppendingString:word]]) continue;
-        if (![lowerTitle containsString:word] && ![lowerURL containsString:word]) return DPBarMatchNone;
-        match = DPBarMatchContains;
+        // The whole title too, for typed words with punctuation in them like "picture-in".
+        BOOL startsWord = [row->host hasPrefix:word] || [row->lowerTitle hasPrefix:word]
+            || [row->lowerTitle containsString:[@" " stringByAppendingString:word]] || (word.length >= 2 && [row->initials hasPrefix:word])
+            || DPAnyHasPrefix(row->titleTokens, word) || DPAnyHasPrefix(row->urlTokens, word);
+        if (startsWord) continue;
+        if ([row->lowerTitle containsString:word] || [row->lowerURL containsString:word]) match = MIN(match, DPBarMatchContains);
+        // ponytail: in memory only. History is filtered in SQL first, so a typo can't find a page that's only in history.
+        else if (word.length >= 5 && (DPTypoOf(word, row->titleTokens) || DPTypoOf(word, row->urlTokens))) match = DPBarMatchTypo;
+        else return DPBarMatchNone;
     }
     return match;
 }
 
-// 0: what you're clearly naming. 1: starts with what's typed. 2: the rest.
+DPBarMatch DPBarMatchOf(NSArray<NSString *> *words, NSString *title, NSString *url) { return DPMatch(words, DPWordsOf(title, url)); }
+
+DPBarMatch DPBarMatchItem(NSArray<NSString *> *words, DPBarItem *item) {
+    if (!item.words) item.words = DPWordsOf(item.title, item.url);
+    return DPMatch(words, item.words);
+}
+
+NSString *DPBarURLKey(NSString *url) {
+    NSRange scheme = [url rangeOfString:@"://"];
+    if (scheme.location == NSNotFound) return url;
+    static NSCharacterSet *ends;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ ends = [NSCharacterSet characterSetWithCharactersInString:@"/?#"]; });
+    NSUInteger start = NSMaxRange(scheme);
+    NSRange end = [url rangeOfCharacterFromSet:ends options:0 range:NSMakeRange(start, url.length - start)];
+    NSUInteger split = end.location == NSNotFound ? url.length : end.location;
+    NSString *key = [[url substringToIndex:split].lowercaseString stringByAppendingString:[url substringFromIndex:split]];
+    while ([key hasSuffix:@"/"]) key = [key substringToIndex:key.length - 1];
+    return key;
+}
+
+// 0: what you're clearly naming. 1: starts with what's typed. 2: contains it. 3: one typo away.
 NSInteger DPBarTier(DPBarKind kind, DPBarMatch match, NSUInteger queryLength) {
     if (match == DPBarMatchNone) return -1;
     if (match == DPBarMatchExact) return 0;
     if (kind == DPBarKindCommand || kind == DPBarKindPage) {
         // One or two letters match half the menus, so leave most visited sites on top until there's a third.
         if (match == DPBarMatchContains) return -1;
+        if (match == DPBarMatchTypo) return queryLength >= 5 ? 3 : -1;
         return queryLength >= 3 ? 0 : 2;
     }
-    return match == DPBarMatchPrefix ? 1 : 2;
+    return match == DPBarMatchPrefix ? 1 : match == DPBarMatchContains ? 2 : 3;
+}
+
+// Each visit counts, halving every week, so this week's habits beat last month's.
+double DPBarVisitFrecency(NSString *visits, double now, double visitCount) {
+    double score = 0;
+    const char *cursor = visits.UTF8String;
+    while (cursor && *cursor) {
+        char *end;
+        double time = strtod(cursor, &end);
+        if (*end != ':') break;
+        long type = strtol(end + 1, &end, 10);
+        double weight = type == 1 ? 2 : type == 8 ? 0 : 1;  // Typed counts double. Reloads don't count.
+        score += weight * exp2(-MAX(0, now - time) / (7 * 8.64e10));
+        cursor = *end == ',' ? end + 1 : NULL;
+    }
+    // Chromium only keeps 90 days of visits, so the all time count breaks ties between older pages.
+    return log2(1 + score) * 1.5 + log2(1 + visitCount) * 0.1;
+}
+
+static const NSTimeInterval DPPickHalfLife = 14 * 86400;
+
+static double DPPickScore(NSDictionary *pick, NSTimeInterval now) {
+    return [pick[@"count"] doubleValue] * exp2(-MAX(0, now - [pick[@"time"] doubleValue]) / DPPickHalfLife);
+}
+
+NSArray<NSDictionary *> *DPBarAddPick(NSArray<NSDictionary *> *picks, NSString *input, NSString *key, NSString *space, NSTimeInterval now) {
+    NSMutableArray<NSDictionary *> *kept = [NSMutableArray new];
+    double count = 0;
+    space = space ?: @"";
+    for (NSDictionary *pick in picks) {
+        if (![pick isKindOfClass:NSDictionary.class]) continue;
+        double score = DPPickScore(pick, now);
+        if ([pick[@"input"] isEqual:input] && [pick[@"key"] isEqual:key] && [pick[@"space"] isEqual:space]) count = score;
+        else if (score >= 0.1) [kept addObject:pick];  // About seven weeks for a single pick.
+    }
+    [kept insertObject:@{@"input": input, @"key": key, @"space": space, @"count": @(count + 1), @"time": @(now)} atIndex:0];
+    // ponytail: a capped list scanned on every keystroke. Index it by first letter if it ever shows up in a profile.
+    return [kept subarrayWithRange:NSMakeRange(0, MIN(kept.count, 1000))];
+}
+
+NSDictionary<NSString *, NSNumber *> *DPBarLearnedPicks(NSArray<NSDictionary *> *picks, NSString *query, NSString *space, NSTimeInterval now) {
+    NSMutableDictionary<NSString *, NSNumber *> *learned = [NSMutableDictionary new];
+    if (!query.length) return learned;
+    for (NSDictionary *pick in picks) {
+        if (![pick isKindOfClass:NSDictionary.class] || ![pick[@"space"] isEqual:space ?: @""] || ![pick[@"input"] isKindOfClass:NSString.class]
+            || ![pick[@"input"] hasPrefix:query] || ![pick[@"key"] isKindOfClass:NSString.class]) continue;
+        // "g", "gi" and "git" all picking the same page add up.
+        learned[pick[@"key"]] = @(DPPickScore(pick, now) + learned[pick[@"key"]].doubleValue);
+    }
+    return learned;
+}
+
+// A recent or repeated pick goes first. A faded one only moves up among rows that match as well as it does.
+// Every row for that page gets the same lift, so its tab still beats its history row.
+void DPBarLiftLearned(NSArray<DPBarItem *> *items, NSDictionary<NSString *, NSNumber *> *learned) {
+    if (!learned.count) return;
+    for (DPBarItem *item in items) {
+        NSNumber *pick = learned[item.url ? DPBarURLKey(item.url) : item.title ?: @""];
+        if (!pick) continue;
+        double score = pick.doubleValue;
+        item.learned = score >= 0.75;  // About six days for a single pick, four weeks for three.
+        if (item.learned) item.tier = 0;
+        item.rank += item.learned ? 10 + score : score * 3;
+    }
 }
 
 void DPBarSortItems(NSMutableArray<DPBarItem *> *items) {

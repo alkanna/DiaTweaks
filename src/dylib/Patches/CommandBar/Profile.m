@@ -126,20 +126,30 @@ void DPBarQueryProfile(NSString *space, NSString *file, NSString *sql, NSArray *
     sqlite3_close(db);
 }
 
-static void DPWalkBookmarks(NSDictionary *node, NSMutableArray<DPBarItem *> *items) {
+// Dia's bookmark bar holds a Favorites folder, then one folder per space with its pinned tabs.
+// `space` is that top folder, `folder` the innermost one below it.
+static void DPWalkBookmarks(NSDictionary *node, NSString *space, NSString *folder, BOOL inBar, NSMutableArray<DPBarItem *> *items) {
     // Picking a row should never run a script.
     if ([node[@"type"] isEqual:@"url"] && [node[@"url"] isKindOfClass:NSString.class] && ![[node[@"url"] lowercaseString] hasPrefix:@"javascript:"]) {
         DPBarItem *item = [DPBarItem new];
         item.kind = DPBarKindBookmark;
         item.title = node[@"name"];
         item.url = node[@"url"];
+        item.detail = !space ? nil : [space isEqual:@"Favorites"] ? @"Favorite"
+                    : folder ? [NSString stringWithFormat:@"Pinned in %@ › %@", space, folder] : [@"Pinned in " stringByAppendingString:space];
         item.symbol = @"bookmark";
         item.frecency = 1;
         [items addObject:item];
     }
     id children = node[@"children"];
     if (![children isKindOfClass:NSArray.class]) return;
-    for (id child in children) if ([child isKindOfClass:NSDictionary.class]) DPWalkBookmarks(child, items);
+    for (id child in children) {
+        if (![child isKindOfClass:NSDictionary.class]) continue;
+        NSString *name = [child[@"name"] isKindOfClass:NSString.class] && [child[@"type"] isEqual:@"folder"] ? child[@"name"] : nil;
+        if (!name.length) DPWalkBookmarks(child, space, folder, inBar, items);
+        else if (!space) DPWalkBookmarks(child, inBar ? name : nil, nil, inBar, items);
+        else DPWalkBookmarks(child, space, name, inBar, items);
+    }
 }
 
 // Every profile holds the same tree (Favorites, then each space's pinned tabs), but some stop updating
@@ -164,7 +174,8 @@ NSArray<DPBarItem *> *DPBarLoadBookmarks(void) {
     id roots = DPReadJSONObject(DPBookmarksPath())[@"roots"];
     NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     if (![roots isKindOfClass:NSDictionary.class]) return items;
-    for (id root in [roots allValues]) if ([root isKindOfClass:NSDictionary.class]) DPWalkBookmarks(root, items);
+    for (NSString *key in roots)
+        if ([roots[key] isKindOfClass:NSDictionary.class]) DPWalkBookmarks(roots[key], nil, nil, [key isEqual:@"bookmark_bar"], items);
     return items;
 }
 
@@ -198,12 +209,15 @@ NSArray<DPBarItem *> *DPBarLoadHistory(NSArray<NSString *> *words) {
         }
         [where appendFormat:@" AND (%@)", [any componentsJoinedByString:@" OR "]];
     }
-    // Most visited alone leaves out pages from the last few days once a query matches more than the limit.
-    NSString *sql = [NSString stringWithFormat:@"SELECT url, title, visit_count, typed_count, last_visit_time FROM urls WHERE rowid IN "
-                                                "(SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY typed_count * 2 + visit_count DESC, last_visit_time DESC LIMIT 80) "
-                                                "UNION SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY last_visit_time DESC LIMIT 40))", where];
-    NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     double now = (NSDate.date.timeIntervalSince1970 + 11644473600.0) * 1e6;  // Chromium time: microseconds since 1601.
+    // Most visited alone leaves out pages from the last few days once a query matches more than the limit.
+    // Visits older than ten weeks weigh under a thousandth, so they aren't worth reading.
+    NSString *sql = [NSString stringWithFormat:@"SELECT url, title, visit_count, (SELECT group_concat(visit_time || ':' || (transition & 255)) FROM "
+                                                "(SELECT visit_time, transition FROM visits WHERE visits.url = urls.rowid AND visit_time > %2$.0f ORDER BY visit_time DESC LIMIT 50)) "
+                                                "FROM urls WHERE rowid IN "
+                                                "(SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY typed_count * 2 + visit_count DESC, last_visit_time DESC LIMIT 80) "
+                                                "UNION SELECT rowid FROM (SELECT rowid FROM urls WHERE %1$@ ORDER BY last_visit_time DESC LIMIT 40))", where, now - 70 * 8.64e10];
+    NSMutableArray<DPBarItem *> *items = [NSMutableArray new];
     DPBarQueryProfile(nil, @"History", sql, args, ^(NSArray *columns) {
         if (![columns[0] isKindOfClass:NSString.class]) return;
         DPBarItem *item = [DPBarItem new];
@@ -211,9 +225,7 @@ NSArray<DPBarItem *> *DPBarLoadHistory(NSArray<NSString *> *words) {
         item.url = columns[0];
         item.title = [columns[1] isKindOfClass:NSString.class] && [columns[1] length] ? columns[1] : item.url;
         item.symbol = @"globe";
-        double ageDays = MAX(0, (now - [columns[4] doubleValue]) / 8.64e10);
-        // Uncapped, so a site visited thousands of times outranks one visited dozens of times.
-        item.frecency = log2([columns[2] doubleValue] + 1) * 0.6 + log2([columns[3] doubleValue] + 1) * 0.8 + 1.5 / (1 + ageDays / 7);
+        item.frecency = DPBarVisitFrecency([columns[3] isKindOfClass:NSString.class] ? columns[3] : @"", now, [columns[2] doubleValue]);
         [items addObject:item];
     });
     return items;

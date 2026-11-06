@@ -31,10 +31,12 @@ int main(void) {
         sqlite3 *db;
         sqlite3_open(history.fileSystemRepresentation, &db);
         NSString *sql = [NSString stringWithFormat:@"CREATE TABLE urls (url, title, visit_count, typed_count, last_visit_time, hidden);"
+                                                    "CREATE TABLE visits (url, visit_time, transition);"
                                                     "INSERT INTO urls VALUES ('%@', '%@ example', 5, 1, 13300000000000000, 0);", space[1], space[2]];
         // More popular pages than the limit, and one visited once just now that must still show up.
         for (int i = 0; i < 100; i++) sql = [sql stringByAppendingFormat:@"INSERT INTO urls VALUES ('https://busy.test/%d', 'Busy %d', 50, 0, 13300000000000000, 0);", i, i];
-        sql = [sql stringByAppendingString:@"INSERT INTO urls VALUES ('https://fresh.test/', 'Busy fresh', 1, 0, 13400000000000000, 0);"];
+        sql = [sql stringByAppendingString:@"INSERT INTO urls VALUES ('https://fresh.test/', 'Busy fresh', 1, 0, 13400000000000000, 0);"
+                                            "INSERT INTO visits SELECT rowid, (strftime('%s', 'now') + 11644473600) * 1000000, 1 FROM urls WHERE url = 'https://fresh.test/';"];
         sqlite3_exec(db, sql.UTF8String, NULL, NULL, NULL);
         sqlite3_close(db);
     }
@@ -53,17 +55,26 @@ int main(void) {
         if (rows.count != 1 || ![rows[0].title isEqualToString:pair[1]]) failures++, NSLog(@"FAIL space %@ read %@", pair[0], rows.firstObject.title);
     }
     DPBarUseSpace(@"Space 1");
-    if (![[DPBarLoadHistory(@[@"busy"]) valueForKey:@"title"] containsObject:@"Busy fresh"]) failures++, NSLog(@"FAIL recent history page left out");
+    NSArray<DPBarItem *> *busy = DPBarLoadHistory(@[@"busy"]);
+    DPBarItem *fresh = [busy filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"title = 'Busy fresh'"]].firstObject;
+    if (!fresh) failures++, NSLog(@"FAIL recent history page left out");
+    if (fresh.frecency <= [[busy valueForKeyPath:@"@min.frecency"] doubleValue]) failures++, NSLog(@"FAIL a typed visit didn't count");
 
     // Profile 1's plain Bookmarks went stale, so Default's newer copy wins even from Repos GH.
     for (NSArray<NSString *> *copy in @[@[@"Default", @"Fresh pin", @0], @[@"Profile 1", @"Stale pin", @-86400]]) {
-        NSDictionary *tree = @{@"roots": @{@"bookmark_bar": @{@"type": @"folder", @"children": @[@{@"type": @"url", @"name": copy[1], @"url": @"https://pin.test/"}]}}};
+        NSDictionary *pin = @{@"type": @"url", @"name": copy[1], @"url": @"https://pin.test/"};
+        NSDictionary *tree = @{@"roots": @{@"bookmark_bar": @{@"type": @"folder", @"children": @[
+            @{@"type": @"folder", @"name": @"Space 1", @"children": @[pin, @{@"type": @"folder", @"name": @"Work", @"children": @[pin]}]},
+            @{@"type": @"folder", @"name": @"Favorites", @"children": @[@{@"type": @"folder", @"name": @"Mail", @"children": @[pin]}]}]}}};
         NSString *path = [[root stringByAppendingPathComponent:copy[0]] stringByAppendingPathComponent:@"Bookmarks"];
         [[NSJSONSerialization dataWithJSONObject:tree options:0 error:nil] writeToFile:path atomically:YES];
         [NSFileManager.defaultManager setAttributes:@{NSFileModificationDate: [NSDate dateWithTimeIntervalSinceNow:[(NSNumber *)copy[2] doubleValue]]} ofItemAtPath:path error:nil];
     }
     DPBarUseSpace(@"Repos GH");
-    if (![[DPBarLoadBookmarks().firstObject title] isEqualToString:@"Fresh pin"]) failures++, NSLog(@"FAIL read a stale Bookmarks file");
+    NSArray<DPBarItem *> *pins = DPBarLoadBookmarks();
+    if (![pins.firstObject.title isEqualToString:@"Fresh pin"]) failures++, NSLog(@"FAIL read a stale Bookmarks file");
+    NSString *places = [[pins valueForKey:@"detail"] componentsJoinedByString:@","];
+    if (![places isEqualToString:@"Pinned in Space 1,Pinned in Space 1 › Work,Favorite"]) failures++, NSLog(@"FAIL bookmark places %@", places);
 
     DPBarLoadHistory(@[@"example"]);
     if (!DPLockedFromOutside(history.fileSystemRepresentation)) failures++, NSLog(@"FAIL reading dropped Dia's lock");
