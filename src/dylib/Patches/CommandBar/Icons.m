@@ -1,24 +1,26 @@
 #import "CommandBar.h"
 
 @implementation DPBarIcons {
-    NSCache<NSString *, NSImage *> *_images;
-    NSCache<NSString *, id> *_misses;
+    // Not NSCache: under memory pressure it evicted on every load, and each reload redrew, so icons flickered nonstop.
+    NSMutableDictionary<NSString *, id> *_icons;  // NSNull for a miss. Guarded by self since preload runs off main.
     NSMutableSet<NSString *> *_loading;  // Main thread only.
     dispatch_queue_t _queue;
 }
 
 - (instancetype)init {
     if (!(self = [super init])) return nil;
-    _images = [NSCache new];
-    _misses = [NSCache new];
+    _icons = [NSMutableDictionary new];
     _loading = [NSMutableSet new];
     _queue = dispatch_queue_create("com.diapatches.commandbar.icons", DISPATCH_QUEUE_SERIAL);
     return self;
 }
 
 - (void)prepare {
-    [_images removeAllObjects];
-    [_misses removeAllObjects];
+    @synchronized (self) { [_icons removeAllObjects]; }
+}
+
+- (id)cached:(NSString *)url {
+    @synchronized (self) { return _icons[url]; }
 }
 
 static NSData *DPLargestIcon(NSString *space, NSString *where, NSArray<NSString *> *args) {
@@ -48,23 +50,22 @@ static NSData *DPIconData(NSString *url, NSString *space) {
 }
 
 - (void)preload:(NSString *)url space:(NSString *)space {
-    if (self.disabled || !url.length || [_images objectForKey:url] || [_misses objectForKey:url]) return;
+    if (self.disabled || !url.length || [self cached:url]) return;
     NSData *png = DPIconData(url, space);
     NSImage *image = png.length ? [[NSImage alloc] initWithData:png] : nil;
-    if (image) [_images setObject:image forKey:url];
-    else [_misses setObject:NSNull.null forKey:url];
+    @synchronized (self) { _icons[url] = image ?: NSNull.null; }
 }
 
 - (NSImage *)iconFor:(NSString *)url space:(NSString *)space {
     if (self.disabled || !url.length) return nil;
-    NSImage *image = [_images objectForKey:url];
-    if (image || [_misses objectForKey:url] || [_loading containsObject:url]) return image;
+    id cached = [self cached:url];
+    if (cached || [_loading containsObject:url]) return [cached isKindOfClass:NSImage.class] ? cached : nil;
     [_loading addObject:url];
     dispatch_async(_queue, ^{
         [self preload:url space:space];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self->_loading removeObject:url];
-            if ([self->_images objectForKey:url] && self.changed) self.changed();
+            if ([[self cached:url] isKindOfClass:NSImage.class] && self.changed) self.changed();
         });
     });
     return nil;
