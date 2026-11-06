@@ -1,51 +1,47 @@
 #import "StdPatch/StdPatch.h"
 #include <libproc.h>
 
-// Apple's iCloud Passwords extension asks for this host by name, and Chromium prefers a user's copy of a host over the
-// system's, so registering it here sends the extension to diapatch, which has the original Dia start Apple's helper.
+// The extension asks for Apple's host by name, and Chromium prefers a user's copy of a host over the system's.
 
 extern DPPatch DPICloudPasswords;
 
-static NSString *DPHostManifestPath(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"];
-}
+static NSString *const kAppleHost = @"/Library/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json";
 
-static NSString *DPDiapatchPath(void) {
-    return [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches/bin/diapatch"];
-}
+static NSString *DPHostManifestPath(void) { return DPAppSupport(@"Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"); }
 
-// Another app's override of Apple's host stays as it is.
-static BOOL DPHostIsOursOrAbsent(void) {
-    NSData *data = [NSData dataWithContentsOfFile:DPHostManifestPath()];
-    if (!data) return YES;
-    NSDictionary *host = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-    return [host isKindOfClass:NSDictionary.class] && [host[@"path"] isEqual:DPDiapatchPath()];
-}
+static NSError *gWriteError;
 
 static void DPRegisterHost(BOOL on) {
-    if (!DPHostIsOursOrAbsent()) return (void)NSLog(@"DiaPatches: another app has replaced the iCloud Passwords host, so it stays");
+    gWriteError = nil;
+    NSData *existing = [NSData dataWithContentsOfFile:DPHostManifestPath()];
+    NSDictionary *host = existing ? [NSJSONSerialization JSONObjectWithData:existing options:0 error:nil] : nil;
+    if (existing && !([host isKindOfClass:NSDictionary.class] && [host[@"path"] isEqual:DPAppSupport(@"DiaPatches/bin/diapatch")])) return;  // another app's
     if (!on) return (void)[NSFileManager.defaultManager removeItemAtPath:DPHostManifestPath() error:nil];
     NSDictionary *manifest = @{
         @"name" : @"com.apple.passwordmanager",
         @"description" : @"DiaTweaks relay to iCloud Passwords",
-        @"path" : DPDiapatchPath(),
+        @"path" : DPAppSupport(@"DiaPatches/bin/diapatch"),
         @"type" : @"stdio",
         @"allowed_origins" : @[ @"chrome-extension://pejdijmoenmkgeppbflobdenhhabjlaj/", @"chrome-extension://mfbcdcnpokpoajjciilocoachedjkima/" ],
     };
-    [NSFileManager.defaultManager createDirectoryAtPath:DPHostManifestPath().stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
-    [[NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil] writeToFile:DPHostManifestPath() atomically:YES];
+    NSError *error;
+    BOOL written = [NSFileManager.defaultManager createDirectoryAtPath:DPHostManifestPath().stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:&error]
+        && [[NSJSONSerialization dataWithJSONObject:manifest options:NSJSONWritingPrettyPrinted error:nil] writeToFile:DPHostManifestPath() options:NSDataWritingAtomic error:&error];
+    gWriteError = written ? nil : error;
 }
 
-// The relay quits the original Dia a few seconds after this one quits, and a copy that starts Apple's helper or answers
-// a passkey can be cut short. Opened again while one runs, Dia would refuse to start ("Dia is already open"), so it's
-// stopped first; this runs before Dia checks.
+static NSString *DPICloudPasswordsProblem(DPPatch *patch) {
+    NSDictionary *apple = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:kAppleHost] ?: NSData.data options:0 error:nil];
+    if (![apple isKindOfClass:NSDictionary.class] || ![apple[@"path"] isKindOfClass:NSString.class] || ![NSFileManager.defaultManager isExecutableFileAtPath:apple[@"path"]])
+        return @"This Mac doesn’t have Apple’s iCloud Passwords helper, which comes with macOS 14 and later.";
+    if (gWriteError) return [NSString stringWithFormat:@"Couldn’t write %@: %@", DPHostManifestPath(), gWriteError.localizedDescription];
+    return DPRelayProblem() ?: DPHostProblem(DPHostManifestPath(), @"com.apple.passwordmanager");
+}
+
+// The relay's original Dia outlives this one by seconds, and Dia refuses to start while it runs. This runs before Dia checks.
 static void DPStopOriginalDia(void) {
     char path[PROC_PIDPATHINFO_MAXSIZE];
-    NSString *pristine = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject
-        stringByAppendingPathComponent:@"DiaPatches/pristine/Dia.app/Contents/MacOS/Dia"];
-    NSArray<NSString *> *originals = @[ pristine.stringByResolvingSymlinksInPath, @"/Applications/.DiaTweaks/Dia.app/Contents/MacOS/Dia" ];
+    NSArray<NSString *> *originals = @[ DPAppSupport(@"DiaPatches/pristine/Dia.app/Contents/MacOS/Dia").stringByResolvingSymlinksInPath, @"/Applications/.DiaTweaks/Dia.app/Contents/MacOS/Dia" ];
     int capacity = proc_listallpids(NULL, 0) + 64;
     pid_t pids[capacity];
     int count = proc_listallpids(pids, capacity * (int)sizeof *pids);
@@ -73,4 +69,5 @@ DP_PATCH(DPICloudPasswords) {
     .section = @"Passwords",
     .install = DPInstallICloudPasswords,
     .apply = DPApplyICloudPasswords,
+    .ready = DPICloudPasswordsProblem,
 };

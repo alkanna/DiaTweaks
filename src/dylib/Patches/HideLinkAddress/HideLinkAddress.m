@@ -1,9 +1,8 @@
-#import "StdPatch/StdPatch.h"
 #import "StdPatch/Hide.h"
 
 static BOOL DPIsLinkAddress(NSView *view) { return DPIsKind(view, DPDiaStatusText); }
 
-// The bubble floats over the page, outside the places StdPatch looks, so its own layout hides it.
+// The bubble is outside the hide hosts.
 static void DPStatusText_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);

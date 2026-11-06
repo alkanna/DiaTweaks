@@ -1,19 +1,17 @@
 #import "EdgeToEdge.h"
 
-// Dia hangs a popup, such as the command bar, from the address field. Edge-to-edge moves the field up and left with
-// the page, so the popup went with it and its top left the window. This puts it back where Dia meant it.
+// Dia hangs popups such as the command bar from the address field, which edge-to-edge moves, so they're moved back.
 
 static char DPPopoverKey;
 
 static CGFloat DPTop(NSView *parent, NSRect rect) { return parent.isFlipped ? NSMinY(rect) : NSMaxY(rect); }
 
-// How far edge-to-edge moved the toolbar a popup at `frame` hangs from. Zero for one that isn't level with it.
 static NSPoint DPPopoverShift(NSView *popover, NSRect frame) {
     for (NSView *container in DPContainers) {
         NSValue *requested = DPRequestedFrame(container);
         NSView *parent = container.superview;
         if (!requested || parent != popover.superview || container.isHiddenOrHasHiddenAncestor) continue;
-        NSView *bar = DPFindView(container, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaNavigationBar); });
+        NSView *bar = DPFindView(container, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaToolbar); });
         if (!bar) continue;
         NSRect barFrame = [parent convertRect:bar.bounds fromView:bar];
         if (parent.isFlipped ? NSMinY(frame) >= NSMaxY(barFrame) : NSMaxY(frame) <= NSMinY(barFrame)) return NSZeroPoint;
@@ -43,6 +41,6 @@ static void DPPopover_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
 }
 
 void DPInstallPopover(void) {
-    DPHook(DPDiaPopoverRoot, @selector(setFrame:), (IMP)DPPopover_setFrame);
-    DPHook(DPDiaPopoverRoot, @selector(setFrameOrigin:), (IMP)DPPopover_setFrameOrigin);
+    DPHook(DPDiaPopover, @selector(setFrame:), (IMP)DPPopover_setFrame);
+    DPHook(DPDiaPopover, @selector(setFrameOrigin:), (IMP)DPPopover_setFrameOrigin);
 }

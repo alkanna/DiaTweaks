@@ -1,6 +1,5 @@
 #import "StdPatch/StdPatch.h"
 
-// The "Personalization on for new chats" button Dia puts at the top right of the toolbar on new tab pages.
 static BOOL DPIsPersonalizeButton(NSView *view) { return DPIsKind(view, DPDiaPersonalizeButton); }
 
 DP_PATCH(DPHidePersonalizeButton) {

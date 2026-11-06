@@ -1,9 +1,7 @@
 #import "TidyTabs.h"
 
-// While the model works, the divider's line turns into a sine wave that rolls sideways. It grows out of the flat line
-// and settles back into it, and the line itself is hidden underneath in between.
 static NSString *const DPWaveName = @"DPTidyWave";
-// Flat, the wave is drawn exactly like Dia's 1pt line, so the swap between them can't be seen; it thickens as it curls.
+// Flat, the wave matches Dia's 1pt line, so the swap can't be seen.
 static const CGFloat DPWavelength = 10, DPAmplitude = 2.25, DPWaveWidth = 1.25, DPLineWidth = 1, DPBoxHeight = 9;
 
 // Sampled densely enough that a flat path and a wavy one have the same points, so one animates into the other.
@@ -47,7 +45,6 @@ void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {
     CALayer *box = DPWaveIn(host);
     CAShapeLayer *shape = box.sublayers.firstObject;
     NSRect frame = line.frame;
-    CGFloat height = DPBoxHeight;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     if (busy && NSWidth(frame) > 0) {
@@ -70,14 +67,13 @@ void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {
             roll.additive = YES;
             [shape addAnimation:roll forKey:@"roll"];
         }
-        // Same left and right ends as the line, and its middle on the line's middle.
-        box.frame = NSMakeRect(NSMinX(frame), NSMidY(frame) - height / 2, NSWidth(frame), height);
-        shape.frame = NSMakeRect(0, 0, NSWidth(frame) + DPWavelength, height);
+        box.frame = NSMakeRect(NSMinX(frame), NSMidY(frame) - DPBoxHeight / 2, NSWidth(frame), DPBoxHeight);
+        shape.frame = NSMakeRect(0, 0, NSWidth(frame) + DPWavelength, DPBoxHeight);
         shape.strokeColor = color;
         line.opacity = 0;
-        CGPathRef wave = DPWavePath(NSWidth(frame), height, DPAmplitude);
+        CGPathRef wave = DPWavePath(NSWidth(frame), DPBoxHeight, DPAmplitude);
         if (fresh) {
-            CGPathRef flat = DPWavePath(NSWidth(frame), height, 0);
+            CGPathRef flat = DPWavePath(NSWidth(frame), DPBoxHeight, 0);
             shape.path = flat;
             CGPathRelease(flat);
             [CATransaction commit];
@@ -94,7 +90,7 @@ void DPTidyWave(CALayer *host, CALayer *line, CGColorRef color, BOOL busy) {
         [CATransaction commit];
         box.name = [DPWaveName stringByAppendingString:@"-leaving"];
         DPMorph(shape, flat, DPLineWidth, ^{
-            // One frame, no implicit fade: the line comes back exactly as the flat wave goes.
+            // No implicit fade: the line returns as the flat wave goes.
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
             if (!DPWaveIn(weakHost)) weakLine.opacity = 1;

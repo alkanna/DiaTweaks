@@ -1,6 +1,5 @@
-// The helper's launch constraint only looks at its parent as the helper starts. So the original Dia runs just until it
-// starts its first subprocess, this diapatch, which takes the host's stdio and becomes the helper; Dia is then quit.
-// The helper names its browser after its parent each time it opens a window, so its pairing window says "(null)".
+// The helper's launch constraint only checks its parent as it starts, so the original Dia runs just until its first
+// subprocess (this diapatch) becomes the helper. The helper's pairing window then says "(null)" for the browser.
 #import <libproc.h>
 #import <poll.h>
 #import <spawn.h>
@@ -10,7 +9,7 @@
 #import "PasswordsParts.h"
 
 extern char **environ;
-int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS then asks about the copy, not Dia
+int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS asks about the copy, not Dia
 
 const char *const DPHandoffVariable = "DIAPATCH_PASSWORDS_HANDOFF";
 static const NSTimeInterval kStartupTimeout = 20;
@@ -72,7 +71,6 @@ static pid_t launchOriginal(NSString *home, NSString *folder, NSString *socket) 
     return status == 0 ? pid : 0;
 }
 
-// Only this diapatch, as a subprocess of the original Dia started here, gets the host's stdio.
 static int acceptSubprocess(int listener, pid_t *dia, pid_t *peer) {
     for (NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:kStartupTimeout]; deadline.timeIntervalSinceNow > 0;) {
         struct pollfd ready = { .fd = listener, .events = POLLIN };

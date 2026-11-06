@@ -1,17 +1,10 @@
-// Asks Apple's on-device model (FoundationModels, macOS 26+) which tabs belong together. Dia names the groups itself
-// once they exist, so the model only clusters. Objective-C calls DPTidyAskModel; FoundationModels is weak-linked, so
-// the dylib still loads on older macOS and answers with an error.
-//
-// One call. Every tab gets an answer field of its own, labelled with the tab, so the model can't mix tabs up. In it the
-// model writes what the tab is about, naming the real product, brand or topic, then a short subject, copying an earlier
-// tab's word for word when it's the same thing. Tabs whose subjects match after normalizing form a group; one-tab
-// subjects are dropped. Matching words, not numbers: numbers let a small model (about 3B parameters) fall into
-// repeating one value for every tab. Sampling is greedy, so the same tabs always give the same groups.
+// FoundationModels is weak-linked, so the dylib still loads on older macOS.
+// Each tab gets its own labelled answer field, so the model can't mix tabs up. Groups match subject words, not numbers:
+// numbers let the ~3B model repeat one value for every tab. Greedy sampling keeps the same tabs giving the same groups.
 import Foundation
 import XPC
 #if canImport(FoundationModels)
 import FoundationModels
-
 
 // macOS 27 renames this samplingMode, but the macOS 26 SDK only has this spelling, so it's the one that builds on both.
 @available(macOS 26, *)
@@ -56,7 +49,6 @@ private let DPTidyInstructions = """
     tab9 about: reading email; subject: email
     """
 
-/// The subject of each tab, in order, normalized so the same thing compares equal.
 @available(macOS 26, *)
 private func DPTidySubjects(_ lines: [String]) async throws -> [String] {
     let answer = DynamicGenerationSchema(name: "Tab", properties: [
@@ -141,7 +133,6 @@ private func DPTidyIneligibleReason() -> String? {
 }
 #endif
 
-/// Why the model can't be used now, or nil when it can. The broom's tooltip shows it.
 @_cdecl("DPTidyUnavailableReason")
 public func DPTidyUnavailableReason() -> NSString? {
     #if canImport(FoundationModels)
@@ -152,8 +143,7 @@ public func DPTidyUnavailableReason() -> NSString? {
     #endif
 }
 
-/// `tabs` holds dictionaries with "title" and "address" (host and path, no query). `done` gets an array of groups, each an array of 1-based tab
-/// numbers with two or more in it, or an error message. It's called on the main queue.
+/// `done` gets groups of two or more 1-based tab numbers, or an error, on the main queue.
 @_cdecl("DPTidyAskModel")
 public func DPTidyAskModel(_ tabs: NSArray, _ done: @escaping @convention(block) (NSArray?, NSString?) -> Void) {
     func finish(_ groups: NSArray?, _ error: String?) {

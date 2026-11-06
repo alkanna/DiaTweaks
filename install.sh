@@ -1,5 +1,4 @@
 #!/bin/sh
-# Builds DiaTweaks and installs it. --yes never asks anything.
 set -eu
 cd "$(dirname "$0")"
 case "${1-}" in

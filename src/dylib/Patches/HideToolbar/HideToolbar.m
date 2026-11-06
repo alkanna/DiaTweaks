@@ -27,7 +27,7 @@ static NSString *DPVerifyHideToolbar(DPPatch *patch) {
         NSView *bar = DPSubview(pane, DPDiaToolbar);
         if (!bar) return @"no toolbar found";
         DPToolbarHover *hover = [DPToolbarHover forPane:pane];
-        if (hover.progress > 0 || hover.inPlaceProgress > 0) continue;  // Revealed by the pointer, or kept in place by an option.
+        if (hover.progress > 0 || hover.inPlaceProgress > 0) continue;
         NSView *bookmarks = DPBookmarksUnder(pane, bar);
         NSArray<NSView *> *bars = bookmarks ? @[bar, bookmarks] : @[bar];
         BOOL hidden = patch->on, found = NO;

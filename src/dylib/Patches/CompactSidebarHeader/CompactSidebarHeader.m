@@ -39,7 +39,6 @@ static void DPHeader_layout(NSView *self, SEL _cmd) {
     row.frame = frame;
 }
 
-// The pinned tabs move up into the empty space under the window buttons.
 static void DPCompactHeader(NSView *sidebar) {
     NSView *header = DPSubview(sidebar, DPDiaSidebarHeader);
     if (!header || !DPMayAdjust(header)) return;

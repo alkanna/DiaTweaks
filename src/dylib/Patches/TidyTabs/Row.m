@@ -2,7 +2,6 @@
 
 static const CGFloat DPLineInset = 11, DPLineGap = 6;  // Dia's divider runs 11pt in from each side.
 
-// The row opened above the tabs when there's no divider of Dia's to sit in: a line like Dia's, and the broom.
 @implementation DPTidyRowView {
     DPTidyBrush *_brush;
     CALayer *_line;

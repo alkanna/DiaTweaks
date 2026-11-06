@@ -1,40 +1,26 @@
 #import "StdPatch/StdPatch.h"
 
-@interface NSObject (DPSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;
-@end
-
 extern DPPatch DPHideSleepingTabs;
 
-static id DPField(id object, NSString *key) {
-    return [object respondsToSelector:@selector(safeSwiftValueForKey:)] ? [object safeSwiftValueForKey:key] : nil;
-}
-
-static id DPState(id viewModel) { return DPField(DPField(viewModel, @"stateSubject"), @"currentValue"); }
+static id DPState(id viewModel) { return DPSwiftValue(DPSwiftValue(viewModel, @"stateSubject"), @"currentValue"); }
 
 // The items only come through as a description, so their tab IDs are read out of it.
 static NSArray<NSString *> *DPSwitcherItems(id viewModel) {
-    NSString *items = [DPField(DPState(viewModel), @"items") description] ?: @"";
-    static NSRegularExpression *uuid;
-    if (!uuid) uuid = [NSRegularExpression regularExpressionWithPattern:@"[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}" options:0 error:nil];
-    NSMutableArray *tabs = [NSMutableArray new];
-    for (NSTextCheckingResult *match in [uuid matchesInString:items options:0 range:NSMakeRange(0, items.length)])
-        [tabs addObject:[items substringWithRange:match.range]];
-    return tabs;
+    return DPUUIDsIn([DPSwiftValue(DPState(viewModel), @"items") description]);
 }
 
 static NSSet<NSString *> *DPSleepingTabs(id viewModel) {
-    NSDictionary *tabs = DPField(DPField(viewModel, @"delegate"), @"recentTabControllers");
+    NSDictionary *tabs = DPSwiftValue(DPSwiftValue(viewModel, @"delegate"), @"recentTabControllers");
     NSMutableSet *sleeping = [NSMutableSet new];
     for (id tab in tabs) {
-        NSString *state = [DPState(DPField(tabs[tab], @"viewModel")) description];
+        NSString *state = [DPState(DPSwiftValue(tabs[tab], @"viewModel")) description];
         if (state && ![state containsString:@"snapshot: Optional("]) [sleeping addObject:[tab description]];
     }
     return sleeping;
 }
 
 static NSArray<NSNumber *> *DPShownItems(id list) {
-    id viewModel = DPField(list, @"viewModel");
+    id viewModel = DPSwiftValue(list, @"viewModel");
     NSSet *sleeping = DPHideSleepingTabs.on ? DPSleepingTabs(viewModel) : nil;
     NSMutableArray *shown = [NSMutableArray new];
     [DPSwitcherItems(viewModel) enumerateObjectsUsingBlock:^(NSString *tab, NSUInteger i, BOOL *stop) {
@@ -86,7 +72,7 @@ static char DPWatchedKey;
 static BOOL DPFitting;
 
 static void DPFitSwitcherSize(NSLayoutConstraint *size, id list) {
-    NSCollectionView *grid = DPField(list, @"collectionView");
+    NSCollectionView *grid = DPSwiftValue(list, @"collectionView");
     NSArray *shown = DPHideSleepingTabs.on ? DPShownItems(list) : nil;
     if (DPFitting || !grid || !shown) return;
     NSSize cell = [list collectionView:grid layout:grid.collectionViewLayout sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:0]];
@@ -124,12 +110,6 @@ static void DPWatchSwitcherSize(id list) {
     }
 }
 
-static NSWindowController *DPOpenSwitcher(void) {
-    for (NSWindow *window in NSApp.windows)
-        if (window.visible && DPIsKind(window.windowController, DPDiaTabSwitcher)) return window.windowController;
-    return nil;
-}
-
 static void DPStepPastSleeping(int tries);
 
 static void DPStepSoon(int tries) {
@@ -139,9 +119,9 @@ static void DPStepSoon(int tries) {
 // The switcher opens a moment after the first ⌃⇥, then moves its highlight on each ⌃⇥ until it rests on a loaded tab.
 static void DPStepPastSleeping(int tries) {
     if (!tries) return;
-    NSWindowController *switcher = DPOpenSwitcher();
-    id viewModel = DPField(switcher, @"viewModel");
-    NSString *focused = [DPField(DPState(viewModel), @"focusedItemID") description];
+    NSWindowController *switcher = DPOpenTabSwitcher();
+    id viewModel = DPSwiftValue(switcher, @"viewModel");
+    NSString *focused = [DPSwiftValue(DPState(viewModel), @"focusedItemID") description];
     if (!focused) return DPStepSoon(tries - 1);
     if (![DPSleepingTabs(viewModel) containsObject:focused]) return;
     NSEventModifierFlags mods = NSEventModifierFlagControl | (NSEvent.modifierFlags & NSEventModifierFlagShift);

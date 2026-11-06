@@ -1,16 +1,11 @@
 #import "HideToolbar.h"
 
-// Dia confirms a copied URL in the address field, which is out of sight while the toolbar is hidden. These options show
-// it some other way. Both follow Dia's own menu items, so ⇧⌘C and ⌥⇧⌘C keep doing what Dia does.
-
-// What Dia's address field says after each Copy URL item in the Edit menu.
 static NSString *DPCopiedMessage(NSMenuItem *item) {
     if ([item.title isEqual:@"Copy URL"]) return @"Copied current URL";
     if ([item.title isEqual:@"Copy URL as Markdown"]) return @"Copied URL as Markdown";
     return nil;
 }
 
-// The pane with the focused page: Dia copies its URL.
 static NSView *DPFocusedPane(void) {
     NSWindow *window = NSApp.keyWindow;
     NSResponder *responder = window.firstResponder;
@@ -27,7 +22,7 @@ static void DPCopiedURL(NSNotification *notification) {
     NSString *message = DPCopiedMessage(notification.userInfo[@"MenuItem"]);
     NSView *pane = message && DPHideToolbar.on ? DPFocusedPane() : nil;
     DPToolbarHover *hover = [DPToolbarHover forPane:pane];
-    if (!hover || hover.inPlace) return;  // Dia's own message shows in the toolbar.
+    if (!hover || hover.inPlace) return;
     if (DPPeekToolbarOnCopy.on) [hover peek];
     else if (DPCopyToast.on && hover.progress == 0) DPShowCopyToast(pane, message);
 }

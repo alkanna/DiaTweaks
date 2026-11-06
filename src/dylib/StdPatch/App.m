@@ -10,7 +10,7 @@ void DPOnQuit(void (^block)(void)) {
                                                 usingBlock:^(NSNotification *_) { block(); }];
 }
 
-// Menu items hold their target weakly, so each item keeps its own in representedObject.
+// Menu items hold their target weakly; representedObject keeps it alive.
 @interface DPMenuAction : NSObject
 @property (nonatomic, copy) void (^action)(void);
 @end

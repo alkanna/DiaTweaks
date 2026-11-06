@@ -1,8 +1,6 @@
 #import "TidyTabs.h"
 
-// With pinned tabs in the list, Dia divides them from the rest with a line and a Close All button that shows while the
-// pointer is on the divider. The broom goes just left of Close All and shows and hides with it, and Dia's line shortens
-// to make room instead of a new row opening.
+// Dia's divider shows Close All while the pointer is on it; the broom shows and hides with it.
 static char DPLineFrameKey;
 static const CGFloat DPCloseAllGap = 4, DPLineGap = 6;
 
@@ -39,8 +37,7 @@ static void DPCloseAll_setHidden(NSView *self, SEL _cmd, BOOL hidden) {
     if (DPIsKind(self.superview, DPDiaTabListSeparator)) DPPlaceSeparatorBrush(self.superview);
 }
 
-// Tabs below the divider, or in the whole list without one, grouped ones included: rows of a tab's height, less the
-// New Tab row at the end. A group's own row is taller than a tab's, so it isn't counted.
+// Rows of a tab's height, less the New Tab row at the end. A group's own row is taller, so isn't counted.
 NSInteger DPTidyTabsBelowLine(NSView *list) {
     NSCollectionView *collection = (NSCollectionView *)DPTidyListScroll(list).documentView;
     if (![collection isKindOfClass:NSCollectionView.class]) return 0;
@@ -68,8 +65,7 @@ void DPPlaceSeparatorBrush(NSView *separator) {
         hooked = YES;
         DPHookClass(object_getClass(closeAll), @selector(setHidden:), (IMP)DPCloseAll_setHidden);
     }
-    // With Close All, while the pointer is on the divider, and only with enough tabs to tidy. While the model works
-    // the broom still comes and goes like this, and the wave fills the whole line whenever it's away.
+    // While busy the broom still follows Close All, and the wave fills the whole line when it's away.
     BOOL shown = DPTidyTabs.on && closeAll && !closeAll.hidden && (DPTidyIsBusy() || DPTidyTabsBelowLine(DPListOf(separator)) >= DPTidyMinimumTabs);
     DPTidyBrush *brush = DPBrushIn(separator, shown);
     CALayer *line = DPSeparatorLine(separator);

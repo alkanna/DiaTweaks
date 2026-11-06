@@ -11,7 +11,6 @@ use crate::{
 
 const FINISHING: &str = "Finishing so Dia isn't left half-installed…";
 
-/// `diatweaks update-dia`: download and patch a newer Dia, then install it now or when Dia quits.
 pub fn run(env: &Env, ui: &Ui) -> Result<()> {
     let diapatch = Diapatch::find(env)?;
     if !env.app.exists() {

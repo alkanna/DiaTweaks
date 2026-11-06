@@ -1,10 +1,9 @@
-// Where Dia keeps the views hide patches match: its toolbar, the sidebar's header and footer, the new tab page, and the tab strip.
 #import "StdPatch/Hide.h"
 
 const char *const DPHideHostClasses[] = {DPDiaToolbar, DPDiaSidebarHeader, DPDiaSidebarFooter, DPDiaNewTabPage, NULL};
 static char DPGrownKey;
 
-// Dia centers the profile dots between the footer's buttons, so a hidden button would pull them off center.
+// Dia centers the profile dots between the footer's buttons, so a hidden one pulls them off center.
 static void DPCenterSpaceSwitcher(NSView *footer) {
     NSView *switcher = DPSubview(footer, DPDiaSpaceSwitcher);
     BOOL patched = NO;
@@ -25,7 +24,6 @@ static void DPSetHeight(NSView *view, CGFloat height) {
     [view setFrameSize:NSMakeSize(NSWidth(view.frame), height)];
 }
 
-// With everything in the sidebar footer hidden, and hidden by patches that are on, the view above grows over its space.
 static void DPSidebar_viewDidLayout(NSViewController *self, SEL _cmd) {
     DPCallOriginal(DPSidebar_viewDidLayout, self);
     NSView *sidebar = self.view, *footer = DPSubview(sidebar, DPDiaSidebarFooter);
@@ -56,7 +54,7 @@ static void DPSidebar_viewDidLayout(NSViewController *self, SEL _cmd) {
     }
 }
 
-// The tab strip's buttons sit directly in its root view, beside the tabs, so only those are searched.
+// The tab strip's buttons sit directly in its root view, beside the tabs.
 static void DPTabStrip_viewWillLayout(NSViewController *self, SEL _cmd) {
     [DPHideHosts addObject:self.view];
     for (NSView *sub in self.view.subviews) if (DPHider(sub)) DPEnforceHides(sub);

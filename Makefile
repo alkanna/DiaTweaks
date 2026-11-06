@@ -37,6 +37,16 @@ build/command-bar-text: tests/command-bar-text.m src/dylib/Patches/CommandBar/Te
 build/command-bar-profile: tests/command-bar-profile.m src/dylib/Patches/CommandBar/Profile.m src/dylib/Patches/CommandBar/Text.m src/dylib/Patches/CommandBar/CommandBar.h | build
 	clang $(CFLAGS) -Isrc/dylib -framework AppKit -framework QuartzCore -lsqlite3 -o $@ $(filter %.m,$^)
 
+GROUP_TABS := $(addprefix src/dylib/Commands/GroupTabs/,Plan.m Title.m Registrable.m Messages.m)
+
+build/group-tabs: tests/group-tabs.m $(GROUP_TABS) | build
+	clang $(CFLAGS) -Isrc/dylib -framework AppKit -o $@ $^
+
+# Checks that need no Dia: the Group Tabs by Domain logic, and that Settings shows each tweak like its neighbours.
+check: build/group-tabs build/patches.json
+	build/group-tabs
+	scripts/check-patches
+
 test: build/DiaPatches.dylib build/command-bar-text build/command-bar-profile
 	build/command-bar-text
 	CFFIXED_USER_HOME=$(CURDIR)/build/command-bar-home build/command-bar-profile
@@ -49,4 +59,4 @@ patch:
 clean:
 	rm -rf build
 
-.PHONY: all clean test patch
+.PHONY: all check clean test patch

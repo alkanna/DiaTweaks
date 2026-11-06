@@ -5,7 +5,7 @@
 
 static const CAFrameRateRange DPPeekFrameRate = {80, 120, 120};  // Without it, ProMotion starts these at 60 Hz.
 
-static CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio) {
+CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio) {
     CGFloat w = 2 * M_PI / response;
     CASpringAnimation *spring = [CASpringAnimation animationWithKeyPath:keyPath];
     spring.stiffness = w * w;

@@ -1,8 +1,6 @@
-// Keeps a patched copy of the user's own Dia in place across updates. The official app stays untouched in
-// <support>/pristine; re-signing drops entitlements tied to The Browser Company's profile, or AMFI refuses to launch.
-
 #import <CommonCrypto/CommonDigest.h>
 #import <Foundation/Foundation.h>
+#import <sys/xattr.h>
 #import "Passkeys.h"
 #import "Passwords.h"
 #include <libproc.h>
@@ -41,9 +39,9 @@ static BOOL emit(FILE *out, NSString *format, ...) {
     return out != stderr;
 }
 
-#define note(...) emit(NULL, __VA_ARGS__)   // log only
-#define say(...) emit(stdout, __VA_ARGS__)  // returns YES
-#define fail(...) emit(stderr, __VA_ARGS__) // returns NO
+#define note(...) emit(NULL, __VA_ARGS__)
+#define say(...) emit(stdout, __VA_ARGS__)
+#define fail(...) emit(stderr, __VA_ARGS__)
 
 #pragma mark - Files and tools
 
@@ -68,7 +66,7 @@ static BOOL removeTree(NSString *path) {
         || fail(@"cannot remove %@: %@", path, error.localizedDescription);
 }
 
-// A delete that's cut short leaves part of a bundle; renamed into .trash first, it can't pass for a whole one.
+// A delete cut short leaves part of a bundle; in .trash it can't pass for a whole one.
 static BOOL discard(NSString *path) {
     NSString *trash = inHome(@".trash");
     if (!removeTree(trash)) return NO;
@@ -106,8 +104,7 @@ static int fetch(NSString *url, int seconds, NSString *file, NSString **output) 
     return run(file ? [argv arrayByAddingObjectsFromArray:@[ @"-o", file ]] : argv, output);
 }
 
-// Extended attributes (Finder info, resource forks) aren't part of the signature, but `codesign --strict`
-// rejects them, and copies of Dia made by Finder or some installers carry them.
+// `codesign --strict` rejects extended attributes, which copies made by Finder or some installers carry.
 static BOOL clone(NSString *from, NSString *to) {
     BOOL copied = clonefile(from.fileSystemRepresentation, to.fileSystemRepresentation, 0) == 0
         || ((errno == EXDEV || errno == ENOTSUP) ? check(@[ @"/usr/bin/ditto", from, to ]) : fail(@"cannot clone %@: %s", from, strerror(errno)));
@@ -119,7 +116,6 @@ static int place(NSString *from, NSString *to) {
     return (exists(to) ? renamex_np(source, target, RENAME_SWAP) : rename(source, target)) == 0 ? 0 : errno;
 }
 
-// Atomic rename, copying onto the destination volume first if needed.
 static BOOL moveBundle(NSString *from, NSString *to) {
     NSString *incoming = [to stringByAppendingString:@".incoming"];
     int error = place(from, to);
@@ -150,7 +146,7 @@ static NSString *versionOf(NSString *app) {
 
 static BOOL isPatched(NSString *app) { return [infoOf(app)[@"DiaPatches"] boolValue]; }
 
-// What the signature claims, without verifying it; verifyOfficial does that.
+// Unverified; verifyOfficial checks the signature.
 static BOOL claimsOfficial(NSString *app) {
     NSString *details;
     return run(@[ @"/usr/bin/codesign", @"-dv", app ], &details) == 0 && [details containsString:@"\nTeamIdentifier=S6N382Y83G\n"];
@@ -183,8 +179,7 @@ static void waitForQuit(pid_t pid) {
 
 #pragma mark - Building
 
-// Weak load command in the padding after the load commands. The dylib lives outside the bundle so updating
-// it doesn't change the app's signature, and with it Dia's keychain access.
+// The dylib lives outside the bundle so updating it doesn't change the signature, and with it Dia's keychain access.
 static BOOL addLoadCommand(NSString *path, NSString *dylib) {
     NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedAlways error:NULL];
     const uint8_t *bytes = data.bytes;
@@ -274,10 +269,14 @@ static BOOL sign(NSString *app) {
     } else {
         NSString *keychain = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Keychains/login.keychain-db"];
         identity = localIdentity(keychain) ?: createLocalIdentity(keychain);
-        if (identity) codesign = [codesign arrayByAddingObjectsFromArray:@[ identity, @"--keychain", keychain ]];
-        else codesign = [codesign arrayByAddingObject:@"-"];
-        if (!identity) say(@"warning: signing ad hoc, so Dia will ask for keychain access again after every update");
+        if (identity) {
+            codesign = [codesign arrayByAddingObjectsFromArray:@[ identity, @"--keychain", keychain ]];
+        } else {
+            codesign = [codesign arrayByAddingObject:@"-"];
+            say(@"warning: signing ad hoc, so Dia will ask for keychain access again after every update");
+        }
     }
+    // Entitlements tied to The Browser Company's profile make AMFI refuse to launch a re-signed Dia.
     NSURL *entitlements = [NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:@"diapatch.entitlements"]];
     NSDictionary *granted = @{
         @"com.apple.security.device.audio-input" : @YES,
@@ -291,8 +290,8 @@ static BOOL sign(NSString *app) {
     return ok;
 }
 
-// A finished build records the inode of staged/Dia.app, which renames keep. Anything else found there, like the app a
-// stopped apply had just swapped out, is never installed.
+// A finished build records staged/Dia.app's inode, which renames keep, so whatever a stopped apply swapped out there
+// is never installed.
 static NSString *stagedID(void) {
     struct stat info;
     return lstat(gStaged.fileSystemRepresentation, &info) == 0 ? @(info.st_ino).stringValue : nil;
@@ -331,7 +330,6 @@ static BOOL build(NSString *source) {
 
 static BOOL newer(NSString *a, NSString *b) { return [a compare:b ?: @"" options:NSNumericSearch] == NSOrderedDescending; }
 
-// sparkle:<name> as an attribute of `enclosure`, else as an element of `item`.
 static NSString *sparkle(NSXMLElement *item, NSXMLElement *enclosure, NSString *name) {
     NSString *value = [enclosure attributeForLocalName:name URI:kSparkle].stringValue
         ?: [item elementsForLocalName:name URI:kSparkle].firstObject.stringValue;
@@ -357,7 +355,7 @@ static NSArray<Release *> *releasesIn(NSXMLDocument *feed) {
     return releases;
 }
 
-// The newest build this Mac can run. Like Sparkle, it skips items tagged with a channel.
+// Like Sparkle, skips items tagged with a channel.
 static Release *offer(NSArray<Release *> *releases) {
     NSOperatingSystemVersion os = NSProcessInfo.processInfo.operatingSystemVersion;
     NSString *system = [NSString stringWithFormat:@"%ld.%ld.%ld", os.majorVersion, os.minorVersion, os.patchVersion];
@@ -367,8 +365,7 @@ static Release *offer(NSArray<Release *> *releases) {
     return best;
 }
 
-// Early Birds is its own feed, which Dia only uses once it has let the account switch App Build to it. The dylib saves
-// the feed Dia's updater asked for; until it has, the official build's own feed.
+// Early Birds is a separate feed Dia only switches to per account; the dylib saves whichever feed Dia's updater asked for.
 static NSString *diaFeed(void) {
     NSString *saved = CFBridgingRelease(CFPreferencesCopyAppValue(CFSTR("diaFeed"), CFSTR("com.diapatches")));
     return env("DIAPATCH_FEED") ?: ([saved isKindOfClass:NSString.class] ? saved : nil) ?: infoOf(gPristine)[@"SUFeedURL"] ?: kFeed;
@@ -433,8 +430,7 @@ static BOOL tweaksAvailable(NSDictionary *latest) {
     return latest && ![installedRelease()[@"digest"] isEqual:latest[@"digest"]] && ![stagedRelease()[@"digest"] isEqual:latest[@"digest"]];
 }
 
-// Dia quarantines whatever it and its children write, including this run when Dia started it, and Gatekeeper then
-// refuses to run the unnotarized diapatch it installs ("diapatch Not Opened").
+// Dia quarantines what it and its children write, so Gatekeeper refuses the unnotarized diapatch a Dia-started run installs.
 static BOOL unquarantine(NSString *path) { return check(@[ @"/usr/bin/xattr", @"-dr", @"com.apple.quarantine", path ]); }
 
 static BOOL stageTweaks(void) {
@@ -484,6 +480,9 @@ static BOOL apply(void) {
     if (!exists(gStaged)) return YES;
     if (!stagedReady()) return unstage() && fail(@"deleted %@: a stopped run left it there; run `diapatch build` to stage Dia again", gStaged);
     if (appRunning()) return fail(@"Dia is running; quit it, then run `diapatch apply`");
+    // An official Dia that isn't the pristine copy was put there by hand, so the staged build is older.
+    if (claimsOfficial(gApp) && ![buildOf(gApp) isEqual:buildOf(gPristine)])
+        return unstage() && say(@"kept the official Dia %@ at %@; run `diapatch install` to patch it", versionOf(gApp), gApp);
     return moveBundle(gStaged, gApp) && removeTree(gReady) && say(@"installed patched Dia %@ at %@", versionOf(gApp), gApp);
 }
 
@@ -537,7 +536,6 @@ static BOOL update(void) {
     return ok && say(@"Dia %@ is staged; relaunch Dia or run `diapatch apply` to install it", release.version);
 }
 
-// Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.
 #pragma mark - iCloud Passwords
 
 static NSString *agentPlist(void) {
@@ -553,7 +551,6 @@ static void removeAgent(void) {
     removeTree(agentPlist());
 }
 
-// launchd starts the relay when the patched Dia's iCloud Passwords extension first connects.
 static NSDictionary *agent(void) {
     NSMutableDictionary *environment = [NSMutableDictionary dictionary];
     for (NSString *name in @[ @"DIAPATCH_HOME", @"DIAPATCH_APP" ]) environment[name] = env(name.UTF8String);
@@ -566,12 +563,15 @@ static BOOL installAgent(void) {
     removeAgent();
     return makeDir(agentPlist().stringByDeletingLastPathComponent)
         && ([agent() writeToURL:[NSURL fileURLWithPath:agentPlist()] error:&error] || fail(@"cannot write %@: %@", agentPlist(), error.localizedDescription))
+        && (removexattr(agentPlist().fileSystemRepresentation, "com.apple.quarantine", 0), YES)  // launchd refuses a quarantined agent
         && check(@[ @"/bin/launchctl", @"bootstrap", [NSString stringWithFormat:@"gui/%d", getuid()], agentPlist() ]);
 }
 
-static BOOL agentCurrent(void) { return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()]; }
+static BOOL agentCurrent(void) {
+    return [[NSDictionary dictionaryWithContentsOfFile:agentPlist()] isEqual:agent()] && run(@[ @"/bin/launchctl", @"print", agentService() ], NULL) == 0;
+}
 
-// The diapatch a self-update replaces is the one that applies it, so the new one's first host updates the agent.
+// The diapatch that applies a self-update is the old one, so the new one's first host updates the agent.
 static void refreshAgent(void) {
     if (agentCurrent()) return;
     FILE *lock = fopen(inHome(@"diapatch.log").fileSystemRepresentation, "a");
@@ -579,13 +579,14 @@ static void refreshAgent(void) {
     if (lock) fclose(lock);
 }
 
-// Only the copy the dylib registered: another app's override of Apple's host isn't DiaTweaks' to remove.
+// Another app's override of Apple's host isn't ours to remove.
 static void removePasswordsHost(void) {
     NSString *path = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Google/Chrome/NativeMessagingHosts/com.apple.passwordmanager.json"];
     NSDictionary *host = [NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:path] ?: NSData.data options:0 error:NULL];
     if ([host isKindOfClass:NSDictionary.class] && [host[@"path"] isEqual:inHome(@"bin/diapatch")]) removeTree(path);
 }
 
+// Deletes only what DiaPatches creates, in case DIAPATCH_HOME points somewhere shared.
 static BOOL purge(void) {
     // install.sh links the diatweaks command into the first of these it can write to.
     NSArray<NSString *> *linkDirs = env("DIATWEAKS_LINK_DIR") ? @[ env("DIATWEAKS_LINK_DIR") ]
@@ -622,6 +623,12 @@ static BOOL uninstall(BOOL purgeFiles) {
     return unstage() && (!purgeFiles || purge());
 }
 
+static BOOL printJSON(NSDictionary *object) {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingSortedKeys | NSJSONWritingWithoutEscapingSlashes error:NULL];
+    printf("%.*s\n", (int)data.length, (const char *)data.bytes);
+    return YES;
+}
+
 static BOOL status(BOOL json) {
     NSString *channel, *problem;
     Release *release = latest(15, &channel, &problem);
@@ -634,13 +641,7 @@ static BOOL status(BOOL json) {
         @"channel" : channel ?: @"stable",
         @"release" : installedRelease()[@"tag"] ?: NSNull.null,
     };
-    if (json) {
-        NSData *data = [NSJSONSerialization dataWithJSONObject:status
-                                                       options:NSJSONWritingSortedKeys | NSJSONWritingWithoutEscapingSlashes
-                                                         error:NULL];
-        printf("%.*s\n", (int)data.length, (const char *)data.bytes);
-        return YES;
-    }
+    if (json) return printJSON(status);
     for (NSString *key in @[ @"official", @"installed", @"patched", @"staged", @"feed", @"channel", @"release" ]) {
         id value = status[key];
         if (value == NSNull.null) value = [key isEqualToString:@"feed"] ? problem : @"none";
@@ -650,7 +651,6 @@ static BOOL status(BOOL json) {
     return YES;
 }
 
-// Like status, it runs without taking the lock.
 static BOOL checkUpdates(void) {
     NSString *channel, *problem, *tweaksProblem;
     Release *dia = latest(15, &channel, &problem);
@@ -676,9 +676,7 @@ static BOOL checkUpdates(void) {
             @"error" : tweaks ? NSNull.null : tweaksProblem,
         },
     };
-    NSData *data = [NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingSortedKeys | NSJSONWritingWithoutEscapingSlashes error:NULL];
-    printf("%.*s\n", (int)data.length, (const char *)data.bytes);
-    return YES;
+    return printJSON(result);
 }
 
 static const char kUsage[] =
@@ -711,7 +709,7 @@ int main(int argc, const char *argv[]) {
         gStaged = inHome(@"staged/Dia.app");
         gReady = inHome(@"staged/ready");
         gStagedTweaks = inHome(@"staged/DiaTweaks");
-        // Started by Dia as the Passkeys extension's native messaging host.
+        // Started by Dia as a native messaging host.
         if (argc > 1 && !strncmp(argv[1], "chrome-extension://", 19)) {
             if (!DPIsPasswordsOrigin(argv[1])) return DPRunPasskeyHost(gHome);
             refreshAgent();

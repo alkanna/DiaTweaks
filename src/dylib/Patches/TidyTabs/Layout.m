@@ -8,13 +8,12 @@ NSScrollView *DPTidyListScroll(NSView *list) {
     return nil;
 }
 
-// Without pinned tabs in the list, the tab list gives up its top `inset` points to the row; Dia's own frame is kept so the next layout starts from it.
+// Dia's scroll frame is kept so the next layout starts from it.
 static void DPTabList_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPTabList_layout, self);
     [DPTidyLists addObject:self];
     DPTidyHover *hover = DPTidyTabs.on ? [DPTidyHover attachToList:self] : [DPTidyHover forList:self];
     CGFloat progress = DPTidyTabs.on ? hover.progress : 0;
-    // Dia's divider has room for the broom, so no row opens.
     NSView *separator = DPTidySeparatorIn(self);
     if (separator) DPPlaceSeparatorBrush(separator);
     CGFloat inset = separator ? 0 : round(DPTidyRowHeight * progress);
@@ -35,11 +34,10 @@ static void DPTabList_layout(NSView *self, SEL _cmd) {
     row.hidden = inset < 1;
 }
 
-// In window coordinates: a strip over the gap between the favorites and the tabs, grown by the row while it's open.
+// In window coordinates. Dia's divider shows the broom with Close All, so needs no zone.
 NSRect DPTidyHoverZone(NSView *list) {
     NSScrollView *scroll = DPTidyListScroll(list);
-    if (!scroll) return NSZeroRect;
-    if (DPTidySeparatorIn(list)) return NSZeroRect;  // Dia's divider shows the broom with Close All.
+    if (!scroll || DPTidySeparatorIn(list)) return NSZeroRect;
     NSRect laidOut = [DPDiaValue(scroll, &DPScrollFrameKey, @(scroll.frame)) rectValue];
     DPTidyRowView *row = DPTidyRowIn(list, NO);
     CGFloat open = row && !row.hidden ? NSHeight(row.frame) : 0;

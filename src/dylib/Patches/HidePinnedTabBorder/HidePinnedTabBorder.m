@@ -2,7 +2,7 @@
 
 static BOOL DPIsPinnedTabOutline(NSView *view) { return DPIsKind(view, DPDiaPinnedTabOutline); }
 
-// The outline sits inside each pinned tab, deeper than the bars hide patches search.
+// The outline is deeper than the hide hosts search.
 static void DPPinnedTab_layout(NSView *self, SEL _cmd) {
     [DPHideHosts addObject:self];
     DPEnforceHides(self);

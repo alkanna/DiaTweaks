@@ -1,7 +1,7 @@
 #import "Patches/Peek/Peek.h"
 
 static NSURL *DPPeekHovered;
-static __weak id DPPeekHoveredPage;
+static __weak id DPPeekHoveredPage, DPPeekHoveredDelegate;
 
 static BOOL DPPeekWanted(NSInteger disposition) {
     BOOL elsewhere = disposition == DPForegroundTab || disposition == DPBackgroundTab || disposition == DPPopup || disposition == DPNewWindow;
@@ -22,12 +22,30 @@ static void DPWebContent_didCreate(id self, SEL _cmd, id webContents, id newWebC
     DPPeekOpenLater(self, webContents, url);
 }
 
+// The same link, as if it opened in its own tab.
+@interface DPStayingAction : NSProxy
+@property (nonatomic, strong) id action;
+@end
+
+@implementation DPStayingAction
+- (NSInteger)navigationDisposition { return DPCurrentTab; }
+- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector { return [self.action methodSignatureForSelector:selector]; }
+- (void)forwardInvocation:(NSInvocation *)invocation { [invocation invokeWithTarget:self.action]; }
+@end
+
 static NSInteger DPWebContent_decidePolicy(id self, SEL _cmd, id webContents, id action) {
     NSInteger disposition = [[action valueForKey:@"navigationDisposition"] integerValue];
     if (!DPPeekWanted(disposition)) {
         NSInteger policy = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, action);
-        // Only a pinned tab turns a current-tab link into a new tab.
-        if (!DPPeek.on || !DPPeekPinnedLinks.on || disposition != DPCurrentTab || policy != DPForegroundTab || !DPPeekCanOpen(webContents)) return policy;
+        if (!DPPeek.on || !DPPeekPinnedLinks.on || policy != DPForegroundTab) return policy;
+        // Only a pinned tab turns a current-tab link into a new tab. A plain click on a new-tab link asks as if it stayed.
+        BOOL leaves = disposition == DPCurrentTab;
+        if (disposition == DPForegroundTab && !(NSEvent.modifierFlags & NSEventModifierFlagCommand)) {
+            DPStayingAction *staying = [DPStayingAction alloc];
+            staying.action = action;
+            leaves = DPCallOriginal(DPWebContent_decidePolicy, self, webContents, staying) == DPForegroundTab;
+        }
+        if (!leaves || !DPPeekCanOpen(webContents)) return policy;
         DPPeekOpenLater(self, webContents, [action valueForKey:@"url"]);
         return DPIgnoreAction;
     }
@@ -51,7 +69,15 @@ static void DPWebContent_status(id self, SEL _cmd, id webContents, NSString *tex
     if (!url && webContents != DPPeekHoveredPage) return;  // Other pages, the warm one included, clear their own.
     DPPeekHovered = [@[ @"http", @"https" ] containsObject:url.scheme.lowercaseString] ? url : nil;
     DPPeekHoveredPage = webContents;
+    DPPeekHoveredDelegate = self;
     DPPeekLookAhead();
+}
+
+// A dragged link was pointed at first, so the page it came from is the last one that reported one.
+void DPPeekOpenDragged(NSURL *url, NSPoint origin) {
+    id page = DPPeekHoveredPage;
+    if (DPPeekShows(page)) return DPPeekLoad(page, url);
+    if (DPPeekCanOpen(page)) DPPeekOpen(NSApp.keyWindow, url, origin, DPPeekHoveredDelegate, page);
 }
 
 static void DPInstallPeek(void) {

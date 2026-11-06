@@ -2,10 +2,6 @@
 
 extern DPPatch DPProfileEmoji;
 
-@interface NSObject (DPSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;  // AXCoreUtilities, in every AppKit app
-@end
-
 static NSString *const DPEmojisKey = @"profileEmojis";
 // The gap is between what's drawn, so emoji and dots sit the same distance apart in any mix.
 static const CGFloat DPSidebarEmojiSize = 13.5, DPSidebarEmojiWidth = 16, DPSidebarDotWidth = 6, DPSidebarGap = 10;
@@ -46,9 +42,9 @@ static void DPShowEmoji(NSView *host, NSView *dot, NSString *emoji, CGFloat size
 }
 
 static void DPShowSidebarItem(NSView *item) {
-    NSString *emoji = DPEmoji(DPSpaceIDOf(item, [item.superview safeSwiftValueForKey:@"itemViews"]));
-    BOOL selected = [[item safeSwiftValueForKey:@"isSelected"] boolValue];
-    NSView *dot = [item safeSwiftValueForKey:@"$__lazy_storage_$_dotView"];
+    NSString *emoji = DPEmoji(DPSpaceIDOf(item, DPSwiftValue(item.superview, @"itemViews")));
+    BOOL selected = [DPSwiftValue(item, @"isSelected") boolValue];
+    NSView *dot = DPSwiftValue(item, @"$__lazy_storage_$_dotView");
     [dot setFrameOrigin:NSMakePoint(round(NSMidX(item.bounds) - NSWidth(dot.frame) / 2), NSMinY(dot.frame))];
     DPShowEmoji(item, dot, emoji, DPSidebarEmojiSize, selected ? 1 : 0.45);
 }
@@ -61,7 +57,7 @@ static CGFloat DPSidebarItemWidth(NSView *item, NSDictionary *views) {
 // Dia also places items outside layout, such as after switching profiles.
 static void DPSidebarItem_setFrame(NSView *self, SEL _cmd, NSRect frame) {
     NSView *switcher = self.superview;
-    NSDictionary *views = [switcher safeSwiftValueForKey:@"itemViews"];
+    NSDictionary *views = DPSwiftValue(switcher, @"itemViews");
     BOOL anyEmoji = NO;
     for (id key in views) anyEmoji = anyEmoji || DPEmoji([key description]);
     if (anyEmoji && NSWidth(frame) > 0 && NSWidth(frame) < DPSidebarDotWidth + DPSidebarGap) {
@@ -94,8 +90,8 @@ static void DPSidebarItem_updateLayer(NSView *self, SEL _cmd) {
 static void DPTopDot_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPTopDot_layout, self);
     NSView *indicator = self.superview;
-    NSString *spaceID = DPSpaceIDOf(self, [indicator safeSwiftValueForKey:@"dotViews"]);
-    BOOL focused = [[[indicator safeSwiftValueForKey:@"focusedSpaceID"] description] isEqual:spaceID];
+    NSString *spaceID = DPSpaceIDOf(self, DPSwiftValue(indicator, @"dotViews"));
+    BOOL focused = [[DPSwiftValue(indicator, @"focusedSpaceID") description] isEqual:spaceID];
     DPShowEmoji(self, self.subviews.firstObject, DPEmoji(spaceID), 8, focused ? 1 : 0.45);
 }
 
@@ -132,7 +128,7 @@ static void DPAddEmojiRow(NSViewController *pane) {
     NSView *group = DPFindView(pane.view, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaSettingsFormGroup); });
     NSStackView *rows = (NSStackView *)DPSubview(group, "NSStackView");
     NSTextField *title = (NSTextField *)DPFindView(rows.arrangedSubviews.firstObject, ^BOOL(NSView *view) { return [view isKindOfClass:NSTextField.class]; });
-    NSString *spaceID = [[pane safeSwiftValueForKey:@"spaceID"] description];
+    NSString *spaceID = [DPSwiftValue(pane, @"spaceID") description];
     if (!rows || !title || !spaceID || DPGet(pane, &DPFieldKey)) return;
 
     NSTextField *label = [NSTextField labelWithString:@"Emoji"];

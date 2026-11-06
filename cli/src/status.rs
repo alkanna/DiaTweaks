@@ -8,16 +8,14 @@ use crate::{
     ui::{self, Spinner, Ui},
 };
 
-pub const COMMIT: &str = env!("DIATWEAKS_COMMIT");
+const COMMIT: &str = env!("DIATWEAKS_COMMIT");
 
-/// `diatweaks status`: plain lines for reading or grepping.
 pub fn print(env: &Env, ui: &Ui) -> Result<()> {
     let lines = report(env, &ui.spinner(""))?;
     ui::say(lines.join("\n"));
     Ok(())
 }
 
-/// The Status screen of the menu.
 pub fn show(env: &Env, ui: &Ui) -> Result<()> {
     let spinner = ui.spinner("Checking Dia");
     let lines = spinner.check(report(env, &spinner))?;
@@ -54,7 +52,7 @@ fn report(env: &Env, spinner: &Spinner) -> Result<Vec<String>> {
         format!("Staged     {staged}"),
         format!("Latest     {latest}"),
         format!("Safe mode  {safe_mode}"),
-        format!("DiaTweaks  {}", short(COMMIT)),
+        format!("DiaTweaks  {}", COMMIT.get(..7).unwrap_or(COMMIT)),
         "Tweaks".into(),
     ];
 
@@ -83,8 +81,4 @@ fn report(env: &Env, spinner: &Spinner) -> Result<Vec<String>> {
         lines.push(line);
     }
     Ok(lines)
-}
-
-pub fn short(commit: &str) -> &str {
-    commit.get(..7).unwrap_or(commit)
 }

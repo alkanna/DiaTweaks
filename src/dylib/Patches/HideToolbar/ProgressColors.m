@@ -1,15 +1,13 @@
 #import "HideToolbar.h"
 #import <Metal/Metal.h>
 
-// The loading line's colors: Dia's own, the accent color, or a pair of system colors. Dia works out its glow's colors in
-// Swift, out of reach, so they're read as it hands them to its shader, per address field.
+// Dia computes its glow colors in Swift, out of reach, so they're read as it hands them to its shader.
 static char DPDiaColorsKey;
-static __weak id DPDrawing;  // Dia's loading indicator while it draws.
-static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet, such as at the start of its first load.
+static __weak id DPDrawing;
+static NSData *DPLastDiaColors;  // For a pane whose field hasn't drawn yet.
 
 static NSArray<NSString *> *DPPresetNames(void) { return @[@"Blue", @"Purple", @"Pink", @"Orange", @"Green", @"Graphite", @"Jace"]; }
 
-// A color from hex values for light and dark, as ja.mt's own tokens are.
 static NSColor *DPHex(uint32_t light, uint32_t dark) {
     return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
         BOOL isDark = [appearance bestMatchFromAppearancesWithNames:@[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]] == NSAppearanceNameDarkAqua;
@@ -26,7 +24,6 @@ static NSArray<NSColor *> *DPPreset(NSString *name) {
         @"Orange" : @[NSColor.systemOrangeColor, NSColor.systemRedColor],
         @"Green" : @[NSColor.systemGreenColor, NSColor.systemMintColor],
         @"Graphite" : @[NSColor.systemGrayColor, NSColor.labelColor],
-        // For DiaTweaks' maker: ja.mt's --primary and --heading.
         @"Jace" : @[DPHex(0x73574a, 0x9a918a), DPHex(0x432818, 0xfef1df)],
     };
     return presets[name];
@@ -41,12 +38,11 @@ NSMenu *DPProgressColorChoices(void) {
     return menu;
 }
 
-simd_float3 DPRGB(NSColor *color) {
+static simd_float3 DPRGB(NSColor *color) {
     NSColor *rgb = [color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
     return (simd_float3){rgb.redComponent, rgb.greenComponent, rgb.blueComponent};
 }
 
-// The colors Dia last drew the pane's address field glow with, if it has since launch.
 static NSData *DPDiaColorsIn(NSView *pane) {
     NSView *bar = DPSubview(pane, DPDiaToolbar);
     NSView *indicator = bar ? DPFindView(bar, ^BOOL(NSView *view) { return DPIsKind(view, DPDiaLoadingIndicator); }) : nil;
@@ -63,7 +59,6 @@ void DPProgressColors(NSView *pane, NSString *choice, simd_float3 *primary, simd
         return;
     }
     NSArray<NSColor *> *preset = DPPreset(choice.capitalizedString);
-    // In the pane's own appearance, so light and dark pages each get their colors.
     [pane.effectiveAppearance performAsCurrentDrawingAppearance:^{
         NSColor *accent = NSColor.controlAccentColor;
         *primary = DPRGB(preset ? preset[0] : accent);
@@ -91,7 +86,7 @@ static void DPEncoder_setFragmentBytes(id self, SEL _cmd, const void *bytes, NSU
 
 void DPInstallProgressColors(void) {
     DPHook(DPDiaLoadingIndicator, @selector(drawInMTKView:), (IMP)DPIndicator_drawInMTKView);
-    // Metal's encoders are the GPU driver's own class, found by making one.
+    // Encoders are the GPU driver's private class, found by making one.
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     MTLTextureDescriptor *target = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:1 height:1 mipmapped:NO];
     target.usage = MTLTextureUsageRenderTarget;

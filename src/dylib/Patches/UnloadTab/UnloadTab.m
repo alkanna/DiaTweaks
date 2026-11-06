@@ -1,26 +1,22 @@
 #import "StdPatch/StdPatch.h"
 #import <objc/message.h>
 
-@interface NSObject (DPUnloadSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;  // AXCoreUtilities: reads Swift properties the Obj-C runtime hides.
-@end
-
 extern DPPatch DPUnloadTab;
 
 enum { DPPageVisible = 2 };  // content::Visibility: hidden, occluded, visible.
 
-static NSHashTable *DPPages;                           // Every page Dia has shown or hidden.
-static NSMapTable<id, NSString *> *DPUnloading;        // Page asked to unload -> its tab's content ID, until Chromium answers.
-static NSMutableSet<NSString *> *DPUnloaded;           // Content IDs of tabs dimmed until they're opened again.
+static NSHashTable *DPPages;
+static NSMapTable<id, NSString *> *DPUnloading;  // Page asked to unload -> its tab's content ID, until Chromium answers.
+static NSMutableSet<NSString *> *DPUnloaded;     // Content IDs of tabs dimmed until they're opened again.
 
 // The tab's one page, as Dia's tab controller knows it. A split tab has more than one, and isn't offered.
 static id DPTabContent(NSView *tab) {
-    NSDictionary *views = [tab safeSwiftValueForKey:@"contentViews"];
+    NSDictionary *views = DPSwiftValue(tab, @"contentViews");
     if (views.count != 1) return nil;
-    return [[views.allValues.firstObject safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"delegate"];
+    return DPSwiftValue(DPSwiftValue(views.allValues.firstObject, @"viewModel"), @"delegate");
 }
 
-static NSString *DPContentID(id content) { return [[content safeSwiftValueForKey:@"contentID"] description]; }
+static NSString *DPContentID(id content) { return [DPSwiftValue(content, @"contentID") description]; }
 
 // Dia's tabs don't hold their page, so it's found by address, and only when no other loaded page shares it.
 static id DPPageAt(NSURL *url) {
@@ -34,7 +30,7 @@ static id DPPageAt(NSURL *url) {
 }
 
 static BOOL DPTabOpen(NSView *tab) {
-    NSString *state = [[[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"] description];
+    NSString *state = [DPSwiftValue(DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"stateSubject"), @"currentValue") description];
     NSString *style = [[state componentsSeparatedByString:@"selectionStyle: "].lastObject substringToIndex:5];
     return ![style hasPrefix:@"nil"] && ![style hasPrefix:@"none"] && ![style hasPrefix:@"above"] && ![style hasPrefix:@"below"];
 }
@@ -64,7 +60,7 @@ static NSMenu *DPTab_menuForEvent(NSView *self, SEL _cmd, NSEvent *event) {
     NSMenu *menu = DPCallOriginal(DPTab_menuForEvent, self, event);
     id content = menu && DPUnloadTab.on ? DPTabContent(self) : nil;
     NSString *contentID = DPContentID(content);
-    id page = DPPageAt([content safeSwiftValueForKey:@"webContentURL"]);
+    id page = DPPageAt(DPSwiftValue(content, @"webContentURL"));
     if (!contentID || !page || [DPUnloaded containsObject:contentID]) return menu;
     NSMenuItem *item = DPMenuItem(@"Unload Tab", ^{
         [DPUnloading setObject:contentID forKey:page];

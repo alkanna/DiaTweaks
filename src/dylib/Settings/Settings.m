@@ -3,7 +3,7 @@
 static NSUserInterfaceItemIdentifier const DPPatchesCellIdentifier = @"DiaPatchesCell";
 static char DPSettingsKey, DPSearchItemKey;
 
-// Patches is the extra last row of Dia's Settings sidebar. Dia never sees its index: Dia's cell lookup traps past the end of its items.
+// Dia never sees the Patches row's index: its cell lookup traps past the end of its items.
 static BOOL DPIsPatchesRow(NSTableView *table, NSInteger row) {
     return row >= 0 && row == table.numberOfRows - 1;
 }
@@ -33,14 +33,25 @@ static __weak DPPaneView *DPShownPane;
     return settings;
 }
 
-- (void)showPane {
-    NSWindow *window = self.table.window;
-    NSView *detail = ((NSSplitViewController *)window.contentViewController).splitViewItems.lastObject.viewController.view;
-    if (self.pane.superview || !detail) return;
-    self.pane = self.pane ?: [[DPPaneView alloc] initWithFrame:detail.bounds];
+// Building and laying out the pane takes a moment, so it's done hidden as Settings opens and a click only shows it.
+- (void)preparePane {
+    NSView *detail = ((NSSplitViewController *)self.table.window.contentViewController).splitViewItems.lastObject.viewController.view;
+    if (!detail || self.pane.superview == detail) return;
+    if (!self.pane) {
+        self.pane = [[DPPaneView alloc] initWithFrame:detail.bounds];
+        self.pane.hidden = YES;
+    }
     self.pane.frame = detail.bounds;
     self.pane.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [detail addSubview:self.pane positioned:NSWindowAbove relativeTo:nil];
+    [self.pane layoutSubtreeIfNeeded];
+}
+
+- (void)showPane {
+    NSWindow *window = self.table.window;
+    [self preparePane];
+    if (!self.pane.superview || !self.pane.hidden) return;
+    self.pane.hidden = NO;
     [self.pane.overview refresh];
     DPShownPane = self.pane;
     __weak DPSettings *weakSelf = self;
@@ -63,8 +74,8 @@ static __weak DPPaneView *DPShownPane;
 }
 
 - (void)hidePane {
-    if (!self.pane.superview) return;
-    [self.pane removeFromSuperview];
+    if (!self.pane.superview || self.pane.hidden) return;
+    self.pane.hidden = YES;
     NSToolbar *toolbar = self.table.window.toolbar;
     NSUInteger index = [toolbar.items indexOfObject:self.pane.searchItem];
     if (index != NSNotFound) {
@@ -102,7 +113,7 @@ static __weak DPPaneView *DPShownPane;
         self.fixedHeight = window.frame.size.height;
         CGFloat width = window.contentLayoutRect.size.width;
         window.styleMask |= NSWindowStyleMaskResizable;
-        // Resizable turns on the green button, but Settings should only grow taller, not zoom or go full screen.
+        // Resizable enables zoom and full screen; Settings should only grow taller.
         window.collectionBehavior = (window.collectionBehavior & ~NSWindowCollectionBehaviorFullScreenPrimary) | NSWindowCollectionBehaviorFullScreenNone;
         [window standardWindowButton:NSWindowZoomButton].enabled = NO;
         window.contentMinSize = NSMakeSize(width, 400);
@@ -125,6 +136,7 @@ static NSInteger DPSidebar_numberOfRows(id self, SEL _cmd, NSTableView *table) {
 
 static NSView *DPSidebar_viewForRow(id self, SEL _cmd, NSTableView *table, NSTableColumn *column, NSInteger row) {
     if (!DPIsPatchesRow(table, row)) return DPCallOriginal(DPSidebar_viewForRow, self, table, column, row);
+    dispatch_async(dispatch_get_main_queue(), ^{ [[DPSettings forTable:table] preparePane]; });
     NSTableCellView *cell = [table makeViewWithIdentifier:DPPatchesCellIdentifier owner:nil];
     if (cell) return cell;
     cell = [objc_getClass(DPDiaSettingsSidebarCell) new];

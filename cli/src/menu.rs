@@ -19,8 +19,6 @@ enum Action {
     Quit,
 }
 
-/// `diatweaks` in a terminal. Esc in a screen goes back here; Esc here, or a signal anywhere, ends
-/// the session.
 pub fn run(env: &Env, ui: &Ui) -> Result<()> {
     ui.intro();
     ui.enter_menu(true);

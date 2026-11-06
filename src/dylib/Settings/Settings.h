@@ -1,4 +1,3 @@
-// The Patches row and pane, added to Dia's Settings window after Dia's own sidebar rows.
 #import "StdPatch/StdPatch.h"
 #import "Updates/Updates.h"
 #import "SafeMode/SafeMode.h"
@@ -8,7 +7,6 @@ void DPInstallPreviews(void);
 
 extern NSToolbarItemIdentifier const DPSearchItemIdentifier;
 
-// Controls.m: the pieces the pane is built from, styled like macOS System Settings.
 NSView *DPGroup(NSArray<NSView *> *rows);
 NSView *DPRow(NSView *leading, NSView *trailing);
 NSView *DPLinkRow(NSView *row, NSString *title, void (^open)(void));

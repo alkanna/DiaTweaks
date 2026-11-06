@@ -1,5 +1,4 @@
 #!/bin/sh
-# Drafts the notes for release $1 from the commits since the tag before it.
 set -eu
 cd "$(dirname "$0")/.."
 tag=$1
@@ -15,7 +14,7 @@ fi
 keys() { [ -z "$1" ] || git grep -h -o '\.key = @"[^"]*"' "$1" -- src/dylib/Patches | sed 's/.*@"//; s/"$//'; }
 old=$(keys "$previous")
 
-# A patch whose key wasn't there at the last tag is a new tweak; the commits that added it aren't listed again.
+# A key missing at the last tag is a new tweak; the commits that added it aren't listed again.
 tweaks='' skip=''
 for key in $(keys "$tag"); do
     printf '%s\n' "$old" | grep -qx "$key" && continue

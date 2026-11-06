@@ -46,19 +46,19 @@ static void DPBrowser_didCreate(id self, SEL _cmd, id browser, id contents, BOOL
     if (browser && contents) DPRemember(contents, nil, browser, DPDelegateFor(self, browser));
 }
 
-// Tabs opened from Dia's own UI come from here, not from the Chromium callbacks above, which only see
-// tabs restored at launch and ones a page opens.
+// Tabs opened from Dia's UI arrive only here; the delegate callbacks see restored and page-opened tabs.
 static id DPBrowser_createWebContents(id self, SEL _cmd, id params) {
     id contents = DPCallOriginal(DPBrowser_createWebContents, self, params);
     DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
     return contents;
 }
 
-// A tab dragged to another window changes browser.
 static void DPBrowser_takeOwnership(id self, SEL _cmd, id contents) {
     DPCallOriginal(DPBrowser_takeOwnership, self, contents);
     DPRemember(contents, nil, self, [DPDelegateByBrowser objectForKey:self]);
 }
+
+NSWindow *DPBrowserWindow(id browser) { return [DPWindowByBrowser objectForKey:browser]; }
 
 id DPCommandBrowser(void) {
     NSMutableArray *ready = [NSMutableArray new];
@@ -70,9 +70,7 @@ id DPCommandBrowser(void) {
     return ready.count == 1 ? ready[0] : nil;
 }
 
-id DPGroupingDelegate(id browser) {
-    return [DPDelegateByBrowser objectForKey:browser];
-}
+id DPGroupingDelegate(id browser) { return [DPDelegateByBrowser objectForKey:browser]; }
 
 NSArray *DPTrackedContents(id browser) {
     NSMutableArray *contents = [NSMutableArray new];
@@ -99,4 +97,5 @@ void DPInstallGroupTabs(void) {
     DPHook(DPDiaBrowserDelegate, @selector(browser:didRestoreWebContents:withSessionId:), (IMP)DPBrowser_didRestore);
     DPHook(DPDiaBrowserDelegate, @selector(browser:didCreateNewWebContents:isActive:), (IMP)DPBrowser_didCreate);
     DPInstallGroupMenus();
+    DPInstallGroupTabsShortcut();
 }

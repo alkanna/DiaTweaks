@@ -13,7 +13,6 @@ static NSTimer *DPTidyEase(CGFloat from, CGFloat to, void (^step)(CGFloat value,
     return timer;
 }
 
-// The view holding the sidebar's header, tab list and footer. It tracks the pointer; the divider decides.
 static NSView *DPSidebarOf(NSView *list) {
     for (NSView *view = list.superview; view; view = view.superview)
         if (DPSubview(view, DPDiaSidebarHeader) || DPSubview(view, DPDiaSidebarFooter)) return view;
@@ -67,7 +66,6 @@ static NSView *DPSidebarOf(NSView *list) {
     self.progress = 0;
 }
 
-// The pointer is on the gap under the favorites, or on the row. Dia's own divider needs no tracking: see Separator.m.
 - (BOOL)containsPointer {
     NSView *list = self.list;
     NSWindow *window = list.window;
@@ -80,7 +78,6 @@ static NSView *DPSidebarOf(NSView *list) {
     if (_revealed == revealed || (revealed && !DPTidyTabs.on)) return;
     _revealed = revealed;
     [self.animation invalidate];
-    self.animation = nil;
     __weak DPTidyHover *weakSelf = self;
     self.animation = DPTidyEase(self.progress, revealed, ^(CGFloat value, BOOL done) {
         DPTidyHover *me = weakSelf;

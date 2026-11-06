@@ -1,5 +1,4 @@
 #!/bin/sh
-# Relaunches Dia with this build in test mode and prints what the patches' self-checks found. Saved settings stay as they are.
 set -eu
 cd "$(dirname "$0")"
 support="${DIAPATCH_HOME:-$HOME/Library/Application Support/DiaPatches}"

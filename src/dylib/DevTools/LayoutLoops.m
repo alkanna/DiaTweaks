@@ -1,7 +1,4 @@
-// Finds what keeps a window's layout dirty. AppKit aborts Dia once a layout pass repeats past the number of views in
-// the window, and its crash report only shows AppKit's own frames. This counts, per view, how often it's marked dirty
-// or moved within one turn of the run loop, and once one passes the limit, writes its ancestry and the backtrace that
-// did it to layout-loops.txt beside the dylib. On with the developer tools.
+// AppKit aborts Dia once a layout pass repeats past the window's view count, and the crash report shows only AppKit frames.
 #import "DevTools/DevTools.h"
 #import <dlfcn.h>
 
@@ -11,7 +8,7 @@ static NSMapTable<NSView *, NSMutableDictionary<NSString *, NSNumber *> *> *DPCo
 static NSMutableSet<NSString *> *DPReported;
 static NSString *DPReportPath;
 static const NSUInteger DPRecentCount = 24;
-static NSMutableArray<NSString *> *DPRecent;  // The latest frame changes, which show what a loop keeps undoing.
+static NSMutableArray<NSString *> *DPRecent;
 
 static void DPRemember(NSView *view, NSRect from, NSRect to) {
     if (!NSThread.isMainThread || !view.window) return;
@@ -84,7 +81,7 @@ void DPTraceLayoutLoops(void) {
     DPHookClass(NSView.class, @selector(setNeedsUpdateConstraints:), (IMP)DPView_setNeedsUpdateConstraints);
     DPHookClass(NSView.class, @selector(setFrameSize:), (IMP)DPView_setFrameSize);
     DPHookClass(NSView.class, @selector(setFrameOrigin:), (IMP)DPView_setFrameOrigin);
-    // A loop never lets the run loop wait, so the counts start over each time it does.
+    // A loop never lets the run loop wait.
     CFRunLoopObserverRef reset = CFRunLoopObserverCreateWithHandler(NULL, kCFRunLoopBeforeWaiting, true, 0, ^(CFRunLoopObserverRef o, CFRunLoopActivity a) {
         [DPCounts removeAllObjects];
     });

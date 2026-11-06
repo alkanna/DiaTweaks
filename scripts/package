@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds build/DiaTweaks.zip, the file a release carries and diapatch self-update installs.
+# DiaTweaks.zip is the release asset diapatch self-update installs.
 set -eu
 cd "$(dirname "$0")/.."
 make -s

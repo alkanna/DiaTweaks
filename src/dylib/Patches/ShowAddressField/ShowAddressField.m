@@ -1,8 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-// Dia shows the address field's background and its buttons while the field is hovered. The field's hover tracker sets
-// that state from the pointer, and a delayed tracker hands it on to the field after the pointer settles. While on, this
-// marks the field hovered, hands that to the field itself, and keeps the pointer's comings and goings from undoing it.
+// The hover tracker sets the field's state from the pointer; a delayed tracker hands it to the field once it settles.
 
 extern DPPatch DPShowAddressField;
 
@@ -56,7 +54,6 @@ static BOOL DPPointerOver(NSView *field) {
 }
 
 static void DPApplyShowAddressField(DPPatch *patch) {
-    // Off, each field goes back to whether the pointer is over it.
     for (NSView *field in DPFindViews(DPDiaAddressField)) DPSetHover(field, patch->on || DPPointerOver(field));
 }
 

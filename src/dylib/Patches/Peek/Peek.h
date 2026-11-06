@@ -45,6 +45,7 @@ NSView *DPPeekWarmHost(NSWindow *window, id<DPPeekPage> page);
 NSView *DPPeekControls(id target, SEL action);
 void DPPeekLayoutHints(NSView *controls, CGFloat availableRight);
 CATransform3D DPPeekScaled(NSView *view, CGFloat scale);
+CASpringAnimation *DPPeekSpring(NSString *keyPath, CFTimeInterval response, CGFloat dampingRatio);
 
 void DPPeekShowTabBadge(DPPeekCard *peek, id source);
 void DPPeekHideTabBadge(DPPeekCard *peek);
@@ -61,3 +62,4 @@ void DPPeekLoad(id page, NSURL *url);
 void DPPeekOpen(NSWindow *window, NSURL *url, NSPoint origin, id delegate, id source);
 void DPPeekWarm(NSWindow *window, id source, NSURL *url);
 void DPPeekCool(void);
+void DPPeekOpenDragged(NSURL *url, NSPoint origin);

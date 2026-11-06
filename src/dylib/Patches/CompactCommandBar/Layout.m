@@ -3,7 +3,7 @@
 static const CGFloat DPCommandBarSpacing = 14;
 static char DPCompactedKey;
 
-// Drops the bottom row, leaving as much space under the input, or the suggestions once there are some, as above the input.
+// Leaves as much space under the input, or the suggestions once there are some, as above the input.
 NSSize DPCompactSize(NSView *container, NSSize size) {
     NSView *commandBar = DPCommandBarPart(container, DPDiaCommandBar), *toolbar = DPCompactToolbar(commandBar);
     NSView *input = DPCommandBarPart(commandBar, DPDiaCommandBarInput), *suggestions = DPCommandBarPart(commandBar, DPDiaCommandBarSuggestions);
@@ -33,8 +33,7 @@ static void DPPopover_setFrameOrigin(NSView *self, SEL _cmd, NSPoint origin) {
     if (DPCompactToolbar(commandBar)) commandBar.needsLayout = YES;
 }
 
-// Dia sizes the popover or panel only when it wants a new size, so one whose command bar settles later, as when the switch
-// flips, the buttons' labels arrive or the new tab page comes back into a window, is trimmed again here.
+// Dia sizes the popover or panel only when it wants a new size, so one whose command bar settles later is trimmed again.
 static void DPRefit(NSView *commandBar) {
     NSView *box = commandBar.superview;
     while (box && !DPIsKind(box, DPDiaPopover) && !(DPIsKind(box, DPDiaAssistantPanel) && DPTrimsPanel(box))) box = box.superview;
@@ -47,8 +46,7 @@ static void DPRefit(NSView *commandBar) {
     box.superview.superview.needsLayout = YES;  // Moves the new tab page's chat usage banner under the panel.
 }
 
-// The row moves up over the input, keeping Go at the trailing edge. The popover can run past the window's top, so Go
-// centers in the part that shows.
+// The popover can run past the window's top, so Go centers in the part that shows.
 static void DPCommandBar_layout(NSView *self, SEL _cmd) {
     DPCallOriginal(DPCommandBar_layout, self);
     DPRefit(self);

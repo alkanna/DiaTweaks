@@ -1,7 +1,5 @@
-// Apple's iCloud Passwords helper carries a launch constraint that only lets browsers signed by their own developers
-// start it, and 1Password's helper checks the browser's signature, so neither works from the patched Dia, signed on this
-// Mac. This host stands in for them: browsers Apple trusts get Apple's helper itself, the original Dia starts Apple's
-// helper on this host's stdio for the patched Dia, and 1Password goes through the relay.
+// Apple's helper has a launch constraint allowing only browsers signed by their developers, and 1Password's helper checks
+// the browser's signature, so neither works from the locally signed patched Dia.
 #import <poll.h>
 #import <sys/event.h>
 #import <sys/socket.h>

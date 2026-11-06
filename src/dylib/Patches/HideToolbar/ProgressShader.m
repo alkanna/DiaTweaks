@@ -1,27 +1,20 @@
 #import "HideToolbar.h"
 #import <Metal/Metal.h>
-#include <simd/simd.h>
 
-// Dia draws its loading glow in the address field with a Metal shader that ships in its bundle. Loading it from there,
-// rather than copying it, keeps the line looking like Dia's own, and Dia's updates bring its changes with them.
 static NSString *const DPShaderInputs[] = {@"progress", @"resolution", @"intensity", @"cycleProgress", @"primaryColor", @"secondaryColor"};
 enum { DPInputCount = sizeof DPShaderInputs / sizeof *DPShaderInputs };
 static id<MTLRenderPipelineState> DPPipeline;
 static id<MTLCommandQueue> DPQueue;
 static NSUInteger DPSlots[DPInputCount];
 
-static id<MTLLibrary> DPDiaLibrary(id<MTLDevice> device) {
-    NSURL *bundle = [NSBundle.mainBundle URLForResource:@"BoostBrowser_NavigationBar" withExtension:@"bundle"];
-    NSURL *url = [[NSBundle bundleWithURL:bundle] URLForResource:@"default" withExtension:@"metallib"];
-    return url ? [device newLibraryWithURL:url error:nil] : nil;
-}
-
-// Finds each input by name, so a reordered shader still works and a changed one falls back to a plain line.
+// Inputs are found by name, so a reordered shader still works and a changed one falls back to a plain line.
 static BOOL DPLoadShader(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-        id<MTLLibrary> library = DPDiaLibrary(device);
+        NSURL *bundle = [NSBundle.mainBundle URLForResource:@"BoostBrowser_NavigationBar" withExtension:@"bundle"];
+        NSURL *url = [[NSBundle bundleWithURL:bundle] URLForResource:@"default" withExtension:@"metallib"];
+        id<MTLLibrary> library = url ? [device newLibraryWithURL:url error:nil] : nil;
         MTLRenderPipelineDescriptor *descriptor = [MTLRenderPipelineDescriptor new];
         descriptor.vertexFunction = [library newFunctionWithName:@"loadingIndicatorVertex"];
         descriptor.fragmentFunction = [library newFunctionWithName:@"loadingIndicatorFragment"];
@@ -83,7 +76,7 @@ void DPDrawProgressShader(CAMetalLayer *layer, CGFloat progress, CGFloat cycle, 
     [encoder setFragmentBytes:&values[2] length:sizeof(float) atIndex:DPSlots[3]];
     [encoder setFragmentBytes:&colors[0] length:sizeof(simd_float3) atIndex:DPSlots[4]];
     [encoder setFragmentBytes:&colors[1] length:sizeof(simd_float3) atIndex:DPSlots[5]];
-    [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];  // One quad over the layer.
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
     [encoder endEncoding];
     [commands presentDrawable:drawable];
     [commands commit];

@@ -4,12 +4,11 @@ static const CGFloat DPGlowHeight = 24, DPLineHeight = 1;  // Dia's glow fades o
 static const NSTimeInterval DPLineFade = 0.3, DPCycle = 2;
 static char DPLineKey;
 
-// Along the top of the pane: Dia's loading glow when its shader loads, else a hairline. It never takes the pointer.
 @interface DPProgressLineView : NSView
 @property (nonatomic, strong) CAMetalLayer *glow;
 @property (nonatomic, strong) CALayer *fill;
 @property (nonatomic, strong) NSTimer *frames;
-@property (nonatomic) CGFloat fraction, shown;  // Where loading is, and where the glow has eased to.
+@property (nonatomic) CGFloat fraction, shown;
 @property (nonatomic) BOOL finishing;
 @end
 
@@ -21,7 +20,6 @@ static char DPLineKey;
     self.glow = DPProgressShaderLayer();
     if (self.glow) {
         self.glow.transform = CATransform3DMakeScale(1, -1, 1);  // Dia's glow rises from the bottom edge; this one hangs from the top.
-        // Dia's glow fills its field to the edge; over a page it has to fade out instead of stopping in a line.
         CAGradientLayer *fade = [CAGradientLayer layer];
         fade.colors = @[(id)NSColor.blackColor.CGColor, (id)NSColor.clearColor.CGColor];
         fade.startPoint = CGPointMake(0.5, 0.35);
@@ -29,7 +27,7 @@ static char DPLineKey;
         self.glow.mask = fade;
         [self.layer addSublayer:self.glow];
     } else {
-        self.fill = [CALayer layer];  // Not a view's own layer, so it animates its frame by itself.
+        self.fill = [CALayer layer];  // Not a view's own layer, so frame changes animate.
         [self.layer addSublayer:self.fill];
     }
     return self;
@@ -40,7 +38,7 @@ static char DPLineKey;
 - (BOOL)wantsUpdateLayer { return YES; }
 
 - (void)updateLayer {
-    self.fill.backgroundColor = [NSColor.controlAccentColor CGColor];  // Follows the accent color, light and dark.
+    self.fill.backgroundColor = [NSColor.controlAccentColor CGColor];
     [self draw];
 }
 
@@ -53,7 +51,7 @@ static char DPLineKey;
 - (void)layout {
     [super layout];
     [CATransaction begin];
-    [CATransaction setDisableActions:YES];  // Resizing with the window, not loading.
+    [CATransaction setDisableActions:YES];
     self.fill.frame = self.fillFrame;
     self.glow.frame = self.bounds;
     self.glow.mask.frame = self.glow.bounds;
@@ -71,7 +69,6 @@ static char DPLineKey;
     DPDrawProgressShader(self.glow, self.shown, cycle, primary, secondary);
 }
 
-// The glow redraws each frame while it shows, easing toward the load's progress as Dia's does.
 - (void)viewDidMoveToWindow {
     [self.frames invalidate];
     self.frames = nil;
@@ -108,7 +105,6 @@ void DPShowProgressLine(NSView *pane, CGFloat fraction) {
     DPProgressLineView *line = DPGet(pane, &DPLineKey);
     if (!line) DPSet(pane, &DPLineKey, line = [DPProgressLineView new]);
     if (!DPLineIn(pane) || line.finishing) {
-        // A new load starts from the left, without animating back from where the last one ended.
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         line.finishing = NO;
@@ -117,10 +113,9 @@ void DPShowProgressLine(NSView *pane, CGFloat fraction) {
         line.alphaValue = 1;
     }
     [line placeIn:pane];
-    line.fraction = MAX(line.fraction, fraction);  // Never runs backwards within a load.
+    line.fraction = MAX(line.fraction, fraction);
 }
 
-// Fills the line, then fades it out.
 void DPFinishProgressLine(NSView *pane) {
     DPProgressLineView *line = DPLineIn(pane);
     if (!line || line.finishing) return;
@@ -130,7 +125,7 @@ void DPFinishProgressLine(NSView *pane) {
         context.duration = DPLineFade;
         line.animator.alphaValue = 0;
     } completionHandler:^{
-        if (line.finishing) [line removeFromSuperview];  // Unless another load brought it back.
+        if (line.finishing) [line removeFromSuperview];
     }];
 }
 

@@ -1,10 +1,9 @@
-// Dia's private classes that patches hook or look for. When a Dia update renames one, fix it here;
-// DPHook logs every class or method it can't find, so `log stream --predicate 'process == "Dia"'` shows which.
+// DPHook logs what it can't find: `log stream --predicate 'process == "Dia"'` shows which class Dia renamed.
 #define DPDiaToolbar            "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaBookmarksBar       "_TtC11BookmarkBar15BookmarkBarView"
 #define DPDiaAddressField       "_TtC13NavigationBar16AssistantBarView"
-#define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"  // The glow in the address field while a page loads.
-#define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"  // Turns into a stop button while the page loads.
+#define DPDiaLoadingIndicator   "_TtC13NavigationBar20LoadingIndicatorView"
+#define DPDiaReloadIcon         "_TtC13NavigationBar14ReloadIconView"
 #define DPDiaHoverTracker       "_TtC5ARCUI16ViewHoverTracker"
 #define DPDiaSidebarHeader      "_TtC10TabSidebar17SidebarHeaderView"
 #define DPDiaTrafficLights      "_TtC5ARCUI21WindowStandardButtons"
@@ -13,7 +12,6 @@
 #define DPDiaTabStripController "_TtC8TabStrip31TabStripContainerViewController"
 #define DPDiaTabStrip           "_TtCC8TabStrip31TabStripContainerViewControllerP33_466228EC43BE4F33691D8E9BB7BFDE208RootView"
 #define DPDiaWindowBackground   "_TtGC5ARCUI25WindowFrameBackgroundViewC15WindowTreatment24WindowBackgroundBaseView_"
-#define DPDiaNavigationBar      "_TtC13NavigationBar17NavigationBarView"
 #define DPDiaWindow             "_TtC6Window14PlatformWindow"
 #define DPDiaLibraryButton      "_TtC10DiaLibrary17LibraryButtonView"
 #define DPDiaLibraryCell        "_TtC10TabSidebar15LibraryCellView"
@@ -23,16 +21,17 @@
 #define DPDiaPinnedTabOutline   "_TtC5TabUIP33_CFF5B89D7BC9743BBA6108D119E2E37020SelectionOutlineView"
 #define DPDiaContentPane        "_TtC11ContentPane15ContentPaneView"
 #define DPDiaContentContainer   "_TtC6Window20ContentContainerView"
+#define DPDiaSplitPane          "_TtC5ARCUI24SplitViewContentPaneView"  // One per page of a split, and one in a window without.
 #define DPDiaFloatingSidebar    "_TtC6Window28FloatingSidebarContainerView"
 #define DPDiaWindowBackgroundTile "_TtC15WindowTreatment24WindowBackgroundBaseView"
 #define DPDiaNewTabPage         "NewTabPage.NewTabPageContentView"
 #define DPDiaShadowView         "_TtC5ARCUI10ShadowView"
-#define DPDiaPopoverRoot        "_TtCC14DynamicPopover28DynamicPopoverViewControllerP33_AB0357A1429F4D6D7F128058B713C93F8RootView"
 #define DPDiaWindowFrame       "_TtC6Window24PlatformWindowThemeFrame"
 #define DPDiaWindowTint         "_TtC15WindowTreatment31WindowBackgroundOverlayTintView"
+#define DPDiaColorView          "_TtC5ARCUI19BackgroundColorView"
 #define DPDiaBrowser            "ArcBrowser"
 #define DPDiaBrowserDelegate    "_TtC3ADK15ChromiumBrowser"
-#define DPDiaWebContents        "ArcWebContents"  // A tab's page, declared in ArcCore's ArcWebContents.h.
+#define DPDiaWebContents        "ArcWebContents"
 #define DPDiaTabGroupProperties "ArcTabGroupProperties"
 #define DPDiaToasts             "_TtC11DiaToastsV210ToastPanel"  // Dia 1.56 shows "Copied Current URL" with these.
 #define DPDiaTabSwitcher        "_TtC10RecentTabs26RecentTabsWindowController"
@@ -53,7 +52,6 @@
 #define DPDiaCommandBarSuggestions "_TtC15BoostCommandBar15SuggestionsView"
 #define DPDiaCommandBarToolbar  "_TtC15BoostCommandBar11ToolbarView"
 #define DPDiaCommandBarButton   "_TtC15BoostCommandBar13ToolbarButton"
-#define DPDiaColorFill          "_TtC5ARCUI19BackgroundColorView"
 #define DPDiaTabView            "_TtC5TabUI7TabView"
 #define DPDiaTabGroupCell       "_TtC5TabUI16TabGroupCellView"
 #define DPDiaTabGroupBackground "_TtCC5TabUI16TabGroupCellViewP33_6B047B569AD47EBB5C3E7DC66393AFEF23ContainerBackgroundView"
@@ -61,6 +59,7 @@
 #define DPDiaChatUsage          "_TtC15BoostCommandBar13ChatUsageView"
 #define DPDiaStatusText         "_TtC10StatusText14StatusTextView"
 #define DPDiaDownloadsMenu      "_TtC15DownloadsButton27DownloadsMenuViewController"
+#define DPDiaReloadNudge        "_TtC13NavigationBar39AdBlockReloadNudgeContentViewController"
 #define DPDiaDownloadsButton    "_TtC10TabSurface19DownloadsButtonView"
 #define DPDiaTabSurfaceButton   "_TtC10TabSurface16TabSurfaceButton"
 #define DPDiaCapabilityButton   "_TtC23AssistantCapabilitiesUI36AssistantCapabilitiesToolbarItemView"
@@ -70,9 +69,9 @@
 #define DPDiaSkillsSuggestions  "_TtC17SkillsSuggestions21SkillsSuggestionsView"
 #define DPDiaNewTabButton       "_TtC7TabList14NewTabCellView"
 #define DPDiaBrowserContext     "ArcBrowserContext"
-#define DPDiaWebContents        "ArcWebContents"
 #define DPDiaWebContentsConfiguration "ArcWebContentsConfiguration"
-#define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // Dia's delegate for each page. A Swift class: look it up after launch.
+#define DPDiaWebContent         "_TtC3ADK18WebContentChromium"  // A Swift class: look it up after launch.
 #define DPDiaTabList            "_TtC7TabList11TabListView"
 #define DPDiaTabListSeparator   "_TtC7TabList20TabListSeparatorView"
 #define DPDiaTabListCollection  "_TtCC7TabList11TabListView14CollectionView"
+#define DPDiaTabListLayout      "_TtC7TabList27TabListCollectionViewLayout"

@@ -21,6 +21,7 @@ body:
         - Square Corners Next to Sidebar
         - Hide Toolbar
         - Show Toolbar on Hover
+        - Toggle toolbar visibility
         - Show Toolbar on New Tabs
         - Show Toolbar with Sidebar
         - Show Loading Progress
@@ -40,11 +41,15 @@ body:
         - Hide Chats Button
         - Hide Pinned Tab Border
         - Hide Pinned Tab Card
+        - Collapse Pinned Tabs
         - Hide Group Background
         - Hide Recent Tabs Button
         - Don’t Open Downloads List
+        - Hide Site Not Working Prompt
         - Close Tabs from Tab Switcher
         - Unload Tabs
+        - Undo Closing a Tab
+        - Pin Tab Shortcut
         - Save Page As
         - Hide Sleeping Tabs
         - Compact Command Bar
@@ -55,19 +60,25 @@ body:
         - Remember What You Typed
         - Hide Upgrade Banner
         - Hide History Suggestions
+        - Turn Off AI
         - Hide New Tab Logo
         - Hide Skills Suggestions
         - Window Material
         - Keep Windows Active
+        - Drag Window from Page
         - Window Corners
         - Hide Window Controls
         - Allow 1Password
         - Allow iCloud Passkeys
         - Allow iCloud Passwords
         - Group Tabs by Domain
+        - Merge Subdomains
         - Peek on Shift-Click
         - Peek from Pinned Tabs
+        - Drag Links to Peek
         - Hide Link Address
+        - Little Dia
+        - Close with Escape
         - Patches pane in Settings
         - Installing, updating or restoring
         - Not sure

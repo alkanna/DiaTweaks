@@ -11,7 +11,12 @@ static NSString *DPSupport(NSString *name) {
         stringByAppendingPathComponent:@"DiaPatches"] stringByAppendingPathComponent:name];
 }
 
-static NSString *DPCLI(void) { return DPSupport(@"bin/diapatch"); }
+static BOOL DPLaunchCLI(NSArray<NSString *> *args) {
+    NSTask *task = [NSTask new];
+    task.executableURL = [NSURL fileURLWithPath:DPSupport(@"bin/diapatch")];
+    task.arguments = args;
+    return [task launchAndReturnError:nil];
+}
 
 static NSUserDefaults *DPUpdateDefaults(void) { return [[NSUserDefaults alloc] initWithSuiteName:@"com.diapatches"]; }
 
@@ -27,7 +32,7 @@ void DPSetAutoLevel(NSString *part, DPAutoLevel level) { [DPUpdateDefaults() set
 void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSTask *task = [NSTask new];
-        task.executableURL = [NSURL fileURLWithPath:DPCLI()];
+        task.executableURL = [NSURL fileURLWithPath:DPSupport(@"bin/diapatch")];
         task.arguments = args;
         NSPipe *pipe = [NSPipe pipe];
         task.standardOutput = pipe;
@@ -43,10 +48,7 @@ void DPRunCLI(NSArray<NSString *> *args, void (^completion)(NSString *output)) {
 }
 
 void DPHandOffAndQuit(NSArray<NSString *> *args) {
-    NSTask *task = [NSTask new];
-    task.executableURL = [NSURL fileURLWithPath:DPCLI()];
-    task.arguments = [args arrayByAddingObjectsFromArray:@[@"--wait", @(getpid()).stringValue, @"--relaunch"]];
-    if ([task launchAndReturnError:nil]) [NSApp terminate:nil];
+    if (DPLaunchCLI([args arrayByAddingObjectsFromArray:@[@"--wait", @(getpid()).stringValue, @"--relaunch"]])) [NSApp terminate:nil];
 }
 
 @implementation DPUpdates {
@@ -221,14 +223,10 @@ static void DPInstallOnQuit(void) {
     NSMutableArray *args = [NSMutableArray arrayWithObjects:@"apply", @"--wait", @(getpid()).stringValue, nil];
     if (dia) [args addObject:@"--dia"];
     if (tweaks) [args addObject:@"--tweaks"];
-    NSTask *task = [NSTask new];
-    task.executableURL = [NSURL fileURLWithPath:DPCLI()];
-    task.arguments = args;
-    [task launchAndReturnError:nil];
+    DPLaunchCLI(args);
 }
 
-// Dia's own updater would put the official app over the patched one, so its checks go to DiaTweaks instead. Dia's feed
-// is stable or, once Dia lets the account switch App Build to Early Birds, the Early Birds one; diapatch updates from it.
+// Dia's updater would put the official app over the patched one. Its feed (stable or Early Birds) is saved for diapatch.
 @protocol DPSparkleUpdater
 @property (nonatomic, readonly) NSURL *feedURL;
 @end
@@ -252,11 +250,10 @@ static void DPUpdater_checkForUpdatesInBackground(id self, SEL _cmd) {
     DPSaveDiaFeed(self);
 }
 
-// Sparkle's own schedule skips the methods above, and Dia's "Automatically update Dia" can turn it on.
+// Sparkle's own schedule skips the hooks above, and Dia's "Automatically update Dia" can turn it on.
 static BOOL DPUpdater_automaticallyChecksForUpdates(id self, SEL _cmd) { return NO; }
 
-// An older diapatch run from Dia left its updates quarantined under Dia's name, and macOS then won't run diapatch, for
-// updates or as the passkeys host. Loaded into Dia, this can still lift it.
+// An older diapatch run from Dia quarantined its updates under Dia's name, so macOS won't run them; Dia can lift it.
 static void DPLiftQuarantine(void) {
     for (NSString *name in @[ @"bin/diapatch", @"bin/diatweaks", @"DiaPatches.dylib", @"patches.json" ])
         removexattr(DPSupport(name).fileSystemRepresentation, "com.apple.quarantine", 0);

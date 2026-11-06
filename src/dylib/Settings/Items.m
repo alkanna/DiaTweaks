@@ -41,6 +41,13 @@ NSURL *DPWikiURL(DPPatch *patch) {
     return self;
 }
 
+// Every switch here is the same small one, and asking NSSwitch its size is most of laying out the overview.
+- (NSSize)intrinsicContentSize {
+    static NSSize size;
+    if (!size.width) size = [super intrinsicContentSize];
+    return size;
+}
+
 - (void)flip {
     DPSetPatch(self.patch, self.state == NSControlStateValueOn, YES);
     [NSNotificationCenter.defaultCenter postNotificationName:DPPatchesDidChangeNotification object:nil];

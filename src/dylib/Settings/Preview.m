@@ -8,7 +8,7 @@
 
 static NSNotificationName const DPTabLayoutMayHaveChanged = @"DPTabLayoutMayHaveChanged";
 
-// The sidebar footer only exists with vertical tabs.
+// The sidebar footer only exists with vertical tabs, so its arrival may mean the layout changed.
 static void DPSidebarFooter_viewDidMoveToWindow(NSView *self, SEL _cmd) {
     DPCallOriginal(DPSidebarFooter_viewDidMoveToWindow, self);
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -27,15 +27,15 @@ static NSURL *DPCachedPreview(NSString *name) {
     return [dir URLByAppendingPathComponent:name];
 }
 
-static NSArray<NSString *> *DPPreviewNames(NSString *key) {
-    NSString *layout = DPTabLayout(), *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
+// The layout is passed in: finding it walks every window's views.
+static NSArray<NSString *> *DPPreviewNames(NSString *key, NSString *layout) {
+    NSString *other = [layout isEqual:@"vertical"] ? @"horizontal" : @"vertical";
     NSMutableArray<NSString *> *names = [NSMutableArray new];
     for (NSString *prefix in @[layout, other])
         for (NSString *suffix in @[@"-onoff.webp", @".mp4", @".png"]) [names addObject:[NSString stringWithFormat:@"%@-%@%@", prefix, key, suffix]];
     return names;
 }
 
-// Calls `done` with the first of `names` the wiki has, cached, or nil if it has none or the download failed.
 static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file, BOOL changed)) {
     if (!names.count) return done(nil, NO);
     NSURL *cached = DPCachedPreview(names[0]);
@@ -70,8 +70,9 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 + (void)preload {
     static NSMutableSet<NSString *> *started;
     if (!started) started = [NSMutableSet new];
+    NSString *layout = DPTabLayout();
     for (NSUInteger i = 0; i < DPPatchCount; i++) {
-        NSArray<NSString *> *names = DPPreviewNames(DPPatches[i]->key);
+        NSArray<NSString *> *names = DPPreviewNames(DPPatches[i]->key, layout);
         if ([started containsObject:names[0]]) continue;
         [started addObject:names[0]];
         DPFetchPreview(names, ^(NSURL *file, BOOL changed) {});
@@ -81,7 +82,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
 - (instancetype)initWithKey:(NSString *)key {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
     _key = key;
-    self.hidden = YES;  // A tweak without a preview on the wiki goes without one.
+    self.hidden = YES;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(load) name:DPTabLayoutMayHaveChanged object:nil];
     [self load];
     return self;
@@ -91,7 +92,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     NSString *layout = DPTabLayout();
     if ([layout isEqual:_layout]) return;
     _layout = layout;
-    NSArray<NSString *> *names = _names = DPPreviewNames(_key);
+    NSArray<NSString *> *names = _names = DPPreviewNames(_key, layout);
     for (NSString *name in names)
         if ([DPCachedPreview(name) checkResourceIsReachableAndReturnError:nil]) {
             [self show:DPCachedPreview(name)];
@@ -124,7 +125,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     _media.contentsGravity = kCAGravityResizeAspectFill;
     _media.frame = self.bounds;
     [self.layer addSublayer:_media];
-    // An on/off preview is one image with the tweak off above it on, shown a half at a time.
+    // Off in the top half, on in the bottom.
     if ([file.lastPathComponent hasSuffix:@"-onoff.webp"]) {
         CGImageRef image = [[[NSImage alloc] initWithContentsOfURL:file] CGImageForProposedRect:NULL context:nil hints:nil];
         size_t width = CGImageGetWidth(image), half = CGImageGetHeight(image) / 2;
@@ -160,7 +161,7 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [self updatePlayback];
 }
 
-// Off on even seconds and on on odd ones, so every preview flips at the same moment.
+// Keyed to the clock so every preview flips at the same moment.
 - (void)showState {
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -168,7 +169,6 @@ static void DPFetchPreview(NSArray<NSString *> *names, void (^done)(NSURL *file,
     [CATransaction commit];
 }
 
-// Otherwise a covered, hidden or closed Settings window keeps decoding video nobody sees.
 - (void)updatePlayback {
     [_link invalidate];
     _link = nil;

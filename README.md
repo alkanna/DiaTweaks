@@ -6,9 +6,21 @@ Unofficial and not affiliated with The Browser Company. Apple Silicon, macOS 14 
 
 ## Tweaks
 
-Each tweak changes one part of how Dia looks, like the padding around pages or a button in the toolbar. There's also a command, **Group Tabs by Domain**, that groups tabs by site.
+Each tweak changes one thing about Dia: it hides something you don't use, changes how something looks, or adds something Dia doesn't do. They're grouped as they are in Settings:
 
-Turn tweaks on and off in **Dia → Settings → Patches**, or with the `diatweaks` command.
+| Section | What the tweaks there change |
+|---|---|
+| Page | The padding and corners around web pages |
+| Toolbar | The toolbar, its buttons and the address field |
+| Sidebar & Tab Bar | The sidebar, pinned tabs, profiles and tab groups |
+| Tabs | Grouping, saving, unloading, closing and reopening tabs |
+| Command Bar | The command bar and what it suggests |
+| New Tab Page | What the new tab page shows |
+| Window | How the window looks and behaves |
+| Passwords | Password managers and passkeys |
+| Links | Opening links in Peek and the address shown on hover |
+
+Turn them on and off in **Dia → Settings → Patches**, or with the `diatweaks` command. Each one's Settings page links to its wiki page, which says what it does and when you'd want it.
 
 [See all tweaks →](https://github.com/JaceThings/DiaTweaks/wiki)
 
@@ -31,14 +43,14 @@ Run `diatweaks` on its own for a menu, or:
 | Command | Does |
 |---|---|
 | `diatweaks list` | Shows every tweak and whether it's on |
-| `diatweaks enable hideToolbar` | Turns a tweak on; Dia changes straight away |
-| `diatweaks disable hideToolbar` | Turns a tweak off |
+| `diatweaks enable hideToolbar` | Turns tweaks on; Dia changes straight away |
+| `diatweaks disable hideToolbar` | Turns tweaks off |
 | `diatweaks status` | Shows Dia's version, safe mode and which tweaks are on |
 | `diatweaks update` | Installs the latest DiaTweaks release and patches Dia again |
 | `diatweaks update-dia` | Downloads a newer Dia and patches it |
 | `diatweaks restore` | Puts the original Dia back |
 
-Tweak names work as keys or titles, like `hideToolbar` or `"Hide toolbar"`. Add `-y` to skip the questions.
+Tweak names work as keys or titles, like `hideToolbar` or `"Hide Toolbar"`, and `enable` and `disable` take several at once. Add `-y` to skip the questions.
 
 ## Updating
 
@@ -63,14 +75,14 @@ rm -rf /tmp/DiaTweaks && git clone --depth 1 https://github.com/JaceThings/DiaTw
 <details>
 <summary><strong>Is it safe?</strong></summary>
 
-Yes. It's built on your Mac from this code. It only changes how Dia looks, and never reads your pages, history or passwords.
+It's built on your Mac from this code, and it doesn't send anything about you anywhere. It goes online only to check for updates and to load the preview pictures in Settings. A few tweaks look at what's in Dia to work: Group Tabs by Domain reads your tabs' addresses, and Tidy Tabs gives your tab titles and addresses to Apple's on-device model, which runs on your Mac. The password tweaks pass messages between your password manager and its extension without reading them.
 
 </details>
 
 <details>
 <summary><strong>How does it work?</strong></summary>
 
-It keeps an untouched copy of Dia and makes a second copy that loads a small add-on. The add-on moves and hides parts of Dia while it runs.
+It keeps an untouched copy of Dia and makes a second copy that loads a small add-on. The add-on changes parts of Dia while it runs. When Dia updates, DiaTweaks patches the new version the same way.
 
 </details>
 
@@ -91,7 +103,7 @@ No. It only does anything while Dia is open.
 <details>
 <summary><strong>Does anything stop working?</strong></summary>
 
-Passkeys saved in Apple Passwords need a short detour through the original Dia, which **Allow iCloud Passkeys** handles. It's off by default, since it runs a second copy of Dia. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-Passkeys)
+Apple Passwords, its passkeys and 1Password only trust the original Dia, so in the patched one they stop working until you switch on the matching tweak in the **Passwords** section. Those run the original Dia without windows as a go-between, which is why they're off by default. [How it works →](https://github.com/JaceThings/DiaTweaks/wiki/Allow-iCloud-Passkeys)
 
 </details>
 

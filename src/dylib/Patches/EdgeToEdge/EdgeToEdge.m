@@ -8,14 +8,12 @@ NSValue *DPRequestedFrame(NSView *container) {
     return DPGet(container, &DPRequestedFrameKey);
 }
 
-// How far each edge of `frame` is from the same edge of the superview.
 static NSEdgeInsets DPGaps(NSView *superview, NSRect frame) {
     NSRect bounds = superview.bounds;
     CGFloat low = NSMinY(frame) - NSMinY(bounds), high = NSMaxY(bounds) - NSMaxY(frame);
     return NSEdgeInsetsMake(superview.isFlipped ? low : high, NSMinX(frame) - NSMinX(bounds), superview.isFlipped ? high : low, NSMaxX(bounds) - NSMaxX(frame));
 }
 
-// Grows the page over each side where Dia left the window padding, by `progress` of it.
 static NSRect DPEdgeToEdgeFrame(NSView *view, NSRect frame) {
     CGFloat inset = DPEdgeToEdge.progress * DPWindowPadding;
     NSView *superview = view.superview;
@@ -40,7 +38,7 @@ CGFloat DPBaseCornerRadius(NSView *container) {
     return radius ? [DPDiaValue(container, &DPRadiusKey, @(*radius)) doubleValue] : 0;
 }
 
-// The corners grow with the page and the window's so they stay concentric with the window's.
+// Grown with the page and the window's corners to stay concentric with the window's.
 static void DPSetCornerRadius(NSView *container, CGFloat inset) {
     CGFloat *radius = DPIvar(container, "cornerRadius");
     if (!radius) return;

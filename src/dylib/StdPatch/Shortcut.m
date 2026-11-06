@@ -11,11 +11,6 @@ static NSUserDefaults *DPShortcutDefaults(void) {
     return defaults;
 }
 
-static NSDictionary *DPShortcutFor(NSString *key, NSDictionary *fallback) {
-    id saved = [DPShortcutDefaults() objectForKey:key];
-    return [saved isKindOfClass:NSDictionary.class] ? saved : fallback;
-}
-
 static NSString *DPShortcutText(NSDictionary *shortcut) {
     if (![shortcut[@"key"] length]) return nil;
     NSEventModifierFlags flags = [shortcut[@"modifiers"] unsignedIntegerValue];
@@ -23,7 +18,6 @@ static NSString *DPShortcutText(NSDictionary *shortcut) {
                                       flags & NSEventModifierFlagShift ? @"⇧" : @"", flags & NSEventModifierFlagCommand ? @"⌘" : @"", shortcut[@"key"]];
 }
 
-// What to show for the key, or nil for one a shortcut can't use.
 static NSString *DPKeyName(NSEvent *event) {
     NSDictionary *named = @{ @(kVK_Return) : @"↩", @(kVK_Tab) : @"⇥", @(kVK_Space) : @"Space", @(kVK_Delete) : @"⌫", @(kVK_ForwardDelete) : @"⌦",
                              @(kVK_LeftArrow) : @"←", @(kVK_RightArrow) : @"→", @(kVK_UpArrow) : @"↑", @(kVK_DownArrow) : @"↓",
@@ -35,16 +29,52 @@ static NSString *DPKeyName(NSEvent *event) {
     return typed.length == 1 && [typed rangeOfCharacterFromSet:NSCharacterSet.controlCharacterSet].location == NSNotFound ? typed : nil;
 }
 
-BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback) {
-    NSDictionary *shortcut = DPShortcutFor(key, fallback);
+static NSDictionary *DPPatchShortcut(DPPatch *patch) {
+    id saved = [DPShortcutDefaults() objectForKey:patch->shortcut];
+    return [saved isKindOfClass:NSDictionary.class] ? saved : patch->defaultShortcut ? patch->defaultShortcut() : nil;
+}
+
+BOOL DPShortcutMatches(NSEvent *event, DPPatch *patch) {
+    NSDictionary *shortcut = DPPatchShortcut(patch);
     return !DPRecording && shortcut[@"keyCode"] && [shortcut[@"keyCode"] integerValue] == event.keyCode &&
            [shortcut[@"modifiers"] unsignedIntegerValue] == (event.modifierFlags & DPShortcutModifiers);
 }
 
+static NSDictionary *DPMenuShortcut(NSMenuItem *item) {
+    NSString *equivalent = item.keyEquivalent;
+    if (equivalent.length != 1) return nil;
+    unichar c = [equivalent characterAtIndex:0];
+    NSDictionary *named = @{ @('\r') : @"↩", @('\t') : @"⇥", @(' ') : @"Space", @('\b') : @"⌫", @(0x7f) : @"⌫", @(NSDeleteFunctionKey) : @"⌦",
+                             @(NSLeftArrowFunctionKey) : @"←", @(NSRightArrowFunctionKey) : @"→", @(NSUpArrowFunctionKey) : @"↑", @(NSDownArrowFunctionKey) : @"↓" };
+    NSString *name = named[@(c)] ?: (c >= NSF1FunctionKey && c <= NSF12FunctionKey ? [NSString stringWithFormat:@"F%d", c - NSF1FunctionKey + 1] : equivalent.uppercaseString);
+    NSEventModifierFlags flags = item.keyEquivalentModifierMask & DPShortcutModifiers;
+    if (![equivalent isEqualToString:equivalent.lowercaseString]) flags |= NSEventModifierFlagShift;
+    return @{ @"key" : name, @"modifiers" : @(flags) };
+}
+
+static BOOL DPSameShortcut(NSDictionary *a, NSDictionary *b) {
+    return [a[@"key"] length] && [a[@"key"] isEqual:b[@"key"]] && [a[@"modifiers"] isEqual:b[@"modifiers"]];
+}
+
+static void DPMenuClashes(NSMenu *menu, NSDictionary *shortcut, NSString *shared, NSMutableArray<NSString *> *names) {
+    for (NSMenuItem *item in menu.itemArray) {
+        if (item.submenu) DPMenuClashes(item.submenu, shortcut, shared, names);
+        else if (!(item.action && [NSStringFromSelector(item.action) isEqualToString:shared]) && DPSameShortcut(DPMenuShortcut(item), shortcut)) [names addObject:item.title];
+    }
+}
+
+static NSArray<NSString *> *DPShortcutClashes(DPPatch *patch) {
+    NSDictionary *shortcut = DPPatchShortcut(patch);
+    NSMutableArray<NSString *> *names = [NSMutableArray new];
+    DPMenuClashes(NSApp.mainMenu, shortcut, patch->sharesShortcutWith, names);
+    for (NSUInteger i = 0; i < DPPatchCount; i++)
+        if (DPPatches[i] != patch && DPPatches[i]->shortcut && DPSameShortcut(DPPatchShortcut(DPPatches[i]), shortcut)) [names addObject:DPPatches[i]->title];
+    return names;
+}
+
 @interface DPShortcutButton : NSView
-@property (nonatomic, copy) NSString *key;
-@property (nonatomic, copy) NSDictionary *fallback;
-@property (nonatomic, strong) NSTextField *label;
+@property (nonatomic) DPPatch *patch;
+@property (nonatomic, strong) NSTextField *label, *clash;
 @property (nonatomic, strong) NSButton *clear;
 @property (nonatomic, strong) id monitor;
 @property (nonatomic) BOOL hovered;
@@ -52,10 +82,10 @@ BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback) {
 
 @implementation DPShortcutButton
 
-- (instancetype)initWithKey:(NSString *)key fallback:(NSDictionary *)fallback {
+- (instancetype)initWithPatch:(DPPatch *)patch clash:(NSTextField *)clash {
     if (!(self = [super initWithFrame:NSZeroRect])) return nil;
-    _key = key;
-    _fallback = fallback;
+    _patch = patch;
+    _clash = clash;
     self.wantsLayer = YES;
     self.layer.cornerRadius = 6;
     self.layer.cornerCurve = kCACornerCurveContinuous;
@@ -81,10 +111,20 @@ BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback) {
 }
 
 - (void)refresh {
-    NSString *text = DPShortcutText(DPShortcutFor(_key, _fallback));
+    NSString *text = DPShortcutText(DPPatchShortcut(_patch));
     _label.stringValue = text ?: @"Add new…";
     _label.textColor = text ? NSColor.labelColor : NSColor.secondaryLabelColor;
     _clear.hidden = !text || !_hovered;
+    // Worded like Dia's Shortcuts settings.
+    NSArray<NSString *> *clashes = DPShortcutClashes(_patch);
+    NSFont *font = [NSFont systemFontOfSize:11];
+    NSMutableAttributedString *warning = [[NSMutableAttributedString alloc] initWithString:@"This shortcut conflicts with another shortcut:\n"
+                                                                                attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.secondaryLabelColor }];
+    [warning appendAttributedString:[[NSAttributedString alloc] initWithString:[clashes componentsJoinedByString:@", "]
+                                                                    attributes:@{ NSFontAttributeName : font, NSForegroundColorAttributeName : NSColor.systemRedColor }]];
+    _clash.attributedStringValue = warning;
+    _clash.hidden = !clashes.count;
+    ((NSStackView *)_clash.superview).edgeInsets = NSEdgeInsetsMake(0, 0, clashes.count ? 8 : 0, 0);
     self.needsDisplay = YES;
 }
 
@@ -129,19 +169,26 @@ BOOL DPShortcutMatches(NSEvent *event, NSString *key, NSDictionary *fallback) {
     if ((event.keyCode == kVK_Delete || event.keyCode == kVK_ForwardDelete) && !flags) return [self clearShortcut];
     NSString *name = DPKeyName(event);
     BOOL functionKey = name.length > 1 && [name hasPrefix:@"F"];
-    // A shortcut needs a modifier other than Shift, so typing letters isn't taken.
+    // Needs a modifier other than Shift, so plain typing isn't taken.
     if (!name || (!(flags & ~NSEventModifierFlagShift) && !functionKey)) return NSBeep();
-    [DPShortcutDefaults() setObject:@{ @"keyCode" : @(event.keyCode), @"modifiers" : @(flags), @"key" : name } forKey:_key];
+    [DPShortcutDefaults() setObject:@{ @"keyCode" : @(event.keyCode), @"modifiers" : @(flags), @"key" : name } forKey:_patch->shortcut];
     [self.window makeFirstResponder:nil];
     [self refresh];
 }
 
 - (void)clearShortcut {
-    [DPShortcutDefaults() setObject:@{} forKey:_key];
+    [DPShortcutDefaults() setObject:@{} forKey:_patch->shortcut];
     [self refresh];
 }
 @end
 
-NSView *DPShortcutField(NSString *key, NSDictionary *fallback) {
-    return [[DPShortcutButton alloc] initWithKey:key fallback:fallback];
+NSView *DPShortcutRow(DPPatch *patch) {
+    NSTextField *clash = [NSTextField wrappingLabelWithString:@""];
+    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], [[DPShortcutButton alloc] initWithPatch:patch clash:clash] ]];
+    row.distribution = NSStackViewDistributionEqualCentering;
+    NSStackView *column = [NSStackView stackViewWithViews:@[ row, clash ]];
+    column.orientation = NSUserInterfaceLayoutOrientationVertical;
+    column.alignment = NSLayoutAttributeLeading;
+    [row.widthAnchor constraintEqualToAnchor:column.widthAnchor].active = YES;
+    return column;
 }

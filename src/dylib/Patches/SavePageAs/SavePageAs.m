@@ -3,7 +3,6 @@
 
 extern DPPatch DPSavePageAs;
 static const NSInteger DPWebContentsVisible = 2;
-static NSString *const DPSavePageShortcutKey = @"savePageAsShortcut";
 static NSHashTable *DPPages;
 static NSMenuItem *DPSaveItem;
 
@@ -42,7 +41,7 @@ static void DPInstallSavePageAs(void) {
     DPSaveItem.hidden = !DPSavePageAs.on;
     DPOnLaunch(^{ DPAddSaveItem(); });
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
-        if (!DPSavePageAs.on || !DPShortcutMatches(event, DPSavePageShortcutKey, DPDefaultSaveShortcut()) || !DPFrontPage()) return event;
+        if (!DPSavePageAs.on || !DPShortcutMatches(event, &DPSavePageAs) || !DPFrontPage()) return event;
         if (!event.isARepeat) DPSaveFrontPage();
         return nil;
     }];
@@ -51,12 +50,6 @@ static void DPInstallSavePageAs(void) {
 static void DPApplySavePageAs(DPPatch *patch) {
     DPAddSaveItem();
     DPSaveItem.hidden = !patch->on;
-}
-
-static NSArray<NSView *> *DPSavePageAsRows(void) {
-    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], DPShortcutField(DPSavePageShortcutKey, DPDefaultSaveShortcut()) ]];
-    row.distribution = NSStackViewDistributionEqualCentering;
-    return @[ row ];
 }
 
 static NSString *DPVerifySavePageAs(DPPatch *patch) {
@@ -77,6 +70,7 @@ DP_PATCH(DPSavePageAs) {
     .classes = DPClasses(DPDiaWebContents),
     .install = DPInstallSavePageAs,
     .apply = DPApplySavePageAs,
-    .rows = DPSavePageAsRows,
+    .shortcut = @"savePageAsShortcut",
+    .defaultShortcut = DPDefaultSaveShortcut,
     .verify = DPVerifySavePageAs,
 };

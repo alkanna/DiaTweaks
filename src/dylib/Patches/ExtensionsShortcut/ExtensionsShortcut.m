@@ -1,7 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
 extern DPPatch DPExtensionsShortcut;
-static NSString *const DPExtensionsShortcutKey = @"extensionsMenuShortcut";
 static NSMapTable<NSWindow *, id> *DPBrowsers;
 
 static NSDictionary *DPDefaultExtensionsShortcut(void) {
@@ -54,16 +53,10 @@ static void DPInstallExtensionsShortcut(void) {
     [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown handler:^NSEvent *(NSEvent *event) {
         NSWindow *window = event.window;
         id browser = window ? [DPBrowsers objectForKey:window] : nil;
-        if (!DPExtensionsShortcut.on || !browser || !DPShortcutMatches(event, DPExtensionsShortcutKey, DPDefaultExtensionsShortcut())) return event;
+        if (!DPExtensionsShortcut.on || !browser || !DPShortcutMatches(event, &DPExtensionsShortcut)) return event;
         if (!event.isARepeat) dispatch_async(dispatch_get_main_queue(), ^{ DPShowExtensions(window, browser); });  // The menu's loop would block this key.
         return nil;
     }];
-}
-
-static NSArray<NSView *> *DPExtensionsShortcutRows(void) {
-    NSStackView *row = [NSStackView stackViewWithViews:@[ [NSTextField labelWithString:@"Shortcut"], DPShortcutField(DPExtensionsShortcutKey, DPDefaultExtensionsShortcut()) ]];
-    row.distribution = NSStackViewDistributionEqualCentering;
-    return @[ row ];
 }
 
 DP_PATCH(DPExtensionsShortcut) {
@@ -76,5 +69,6 @@ DP_PATCH(DPExtensionsShortcut) {
     .section = @"Toolbar",
     .classes = DPClasses(DPDiaBrowser),
     .install = DPInstallExtensionsShortcut,
-    .rows = DPExtensionsShortcutRows,
+    .shortcut = @"extensionsMenuShortcut",
+    .defaultShortcut = DPDefaultExtensionsShortcut,
 };

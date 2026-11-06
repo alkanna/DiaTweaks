@@ -1,16 +1,12 @@
 #import "Patches/Peek/Peek.h"
 
-@interface NSObject (DPPeekSwiftFields)
-- (id)safeSwiftValueForKey:(NSString *)key;  // AXCoreUtilities: reads Swift properties the Obj-C runtime hides.
-@end
-
 static id DPTabState(NSView *tab) {
-    return [[[tab safeSwiftValueForKey:@"viewModel"] safeSwiftValueForKey:@"stateSubject"] safeSwiftValueForKey:@"currentValue"];
+    return DPSwiftValue(DPSwiftValue(DPSwiftValue(tab, @"viewModel"), @"stateSubject"), @"currentValue");
 }
 
 // selectionStyle is "none" when unselected (nil on an unselected pinned tab), and above/below on the selection's neighbours.
 static BOOL DPTabSelected(NSView *tab) {
-    NSString *style = [[[DPTabState(tab) safeSwiftValueForKey:@"selectionStyle"] description] lowercaseString];
+    NSString *style = [[DPSwiftValue(DPTabState(tab), @"selectionStyle") description] lowercaseString];
     return style && ![style containsString:@"none"] && ![style containsString:@"above"] && ![style containsString:@"below"];
 }
 
@@ -23,7 +19,7 @@ static NSArray<NSView *> *DPTabsIn(NSWindow *window) {
 
 static NSString *DPPeekPageID(id page) {
     for (NSString *key in @[@"identifier", @"id", @"contentID", @"contentId", @"uuid"]) {
-        NSString *value = [[(NSObject *)page safeSwiftValueForKey:key] description];
+        NSString *value = [DPSwiftValue((NSObject *)page, key) description];
         if (value.length >= 32 && [value containsString:@"-"]) return value;
     }
     return nil;

@@ -2,8 +2,7 @@
 #import <dlfcn.h>
 #import <mach-o/loader.h>
 
-// A launch that neither lasts this long nor quits normally counts as a crash. A patch that crashes Dia often does it
-// the first time a window resizes, goes full screen or opens a new tab, so this is longer than a launch.
+// Shorter-lived launches that don't quit normally count as crashes. Long, since patches often crash on a first resize or new tab.
 static const int64_t DPSurviveSeconds = 180;
 
 NSInteger DPSafeMode;
@@ -27,7 +26,7 @@ void DPBeginLaunch(void) {
     Dl_info info;
     dladdr((const void *)DPBeginLaunch, &info);
     DPStateURL = [NSURL fileURLWithPath:[@(info.dli_fname).stringByDeletingLastPathComponent stringByAppendingPathComponent:@"safe-mode.plist"]];
-    // A new build of the dylib may be the fix, so it starts over.
+    // A new build may be the fix, so it starts over.
     NSString *build = DPBuildUUID(info.dli_fbase);
     NSDictionary *saved = [NSDictionary dictionaryWithContentsOfURL:DPStateURL error:nil];
     DPState = [saved[@"build"] isEqual:build] ? [saved mutableCopy] : [NSMutableDictionary dictionaryWithObject:build forKey:@"build"];

@@ -18,7 +18,7 @@
     return value;
   };
 
-  // Writable like a real credential's, whose fields come from its prototype: sites' libraries assign over some, such as toJSON.
+  // Writable: sites' libraries assign over some fields, such as toJSON.
   const own = (proto, fields) =>
     Object.defineProperties(Object.create(proto), Object.fromEntries(Object.entries(fields).map(([k, value]) => [k, { value, enumerable: true, writable: true, configurable: true }])));
 

@@ -28,6 +28,8 @@ static void DPRunScenario(NSArray<NSArray<NSString *> *> *scenarios, NSUInteger 
             DPPatch *patch = DPPatches[i];
             states[patch->key] = @(patch->on);
             NSString *problem = patch->verify && !patch->unavailable ? patch->verify(patch) : nil;
+            if (!problem && patch->on && patch->ready) problem = patch->ready(patch);
+            if (!problem && !patch->on && !patch->unavailable && [bits characterAtIndex:i] == '1') problem = @"couldn't turn on";
             if (problem) failures[patch->key] = problem;
         }
         [results addObject:@{@"name": scenarios[index][0], @"states": states, @"failures": failures}];
@@ -39,7 +41,7 @@ void DPRunTests(NSString *path) {
     DPOnLaunch(^{
         __block int polls = 0;
         [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
-            // After a minute without a browser window it runs anyway, and the report says what's missing.
+            // After a minute without a browser window, run anyway so the report says what's missing.
             if (!DPFindViews(DPDiaContentPane).count && ++polls < 120) return;
             [timer invalidate];
             if (DPSafeMode) return DPWriteReport(@[], path);

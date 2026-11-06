@@ -1,5 +1,5 @@
-// What the original Dia runs as each of its subprocesses while it starts Apple's helper for a host: the first takes the
-// host's stdio and becomes the helper, and the rest find the host has stopped listening and quit.
+// Each subprocess of the original Dia runs this: the first takes the host's stdio and becomes Apple's helper, the rest
+// find the host has stopped listening and quit.
 #import <sys/socket.h>
 #import <sys/un.h>
 #import "Passwords.h"

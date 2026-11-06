@@ -4,7 +4,6 @@ static const CGFloat DPToolbarHoverHeight = 8;
 static const NSTimeInterval DPPeekDuration = 1.6;  // Long enough for Dia's Copied message to come and go.
 static char DPHoverKey;
 
-// Eases from `from` to `to` over a quarter second, calling `step` on each frame.
 static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOOL done)) {
     CFTimeInterval start = CACurrentMediaTime();
     NSTimer *timer = [NSTimer timerWithTimeInterval:1.0 / 120 repeats:YES block:^(NSTimer *timer) {
@@ -48,13 +47,17 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     [NSNotificationCenter.defaultCenter removeObserver:self];
 }
 
-- (void)reset {
+- (void)stopReveal {
     [self.animation invalidate];
     [self.hideTimer invalidate];
     [self.peekTimer invalidate];
     self.animation = self.hideTimer = self.peekTimer = nil;
     _revealed = _peeking = NO;
     self.progress = 0;
+}
+
+- (void)reset {
+    [self stopReveal];
     if (self.pane) DPApplyToolbar(self.pane);
 }
 
@@ -90,12 +93,11 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
         if (!done) return;
         me.animation = nil;
         if (!me.revealed) me.peeking = NO;  // Only once faded out, so the fade isn't cut short.
-        DPApplyToolbar(me.pane);  // Settle stacking once, after the fade.
+        DPApplyToolbar(me.pane);
     });
     DPApplyToolbar(self.pane);
 }
 
-// Unlike a hover reveal, this brings the toolbar back into its place, so the page moves down with each frame.
 - (void)setInPlace:(BOOL)inPlace {
     if (_inPlace == inPlace) return;
     _inPlace = inPlace;
@@ -115,12 +117,12 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     [self.hideTimer invalidate];
     [self.peekTimer invalidate];
     self.hideTimer = self.peekTimer = nil;
-    _peeking = NO;  // The pointer takes over a peek.
+    _peeking = NO;
     self.revealed = YES;
 }
 
 - (void)mouseExited:(NSEvent *)event {
-    // Growing the tracking area on reveal sends an exit from the old, narrow strip. A peek hides on its own time.
+    // Growing the tracking area on reveal sends an exit from the old, narrow strip.
     if (!self.revealed || self.peeking || [self containsPointer] || self.hideTimer) return;
     __weak DPToolbarHover *weakSelf = self;
     self.hideTimer = [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer *timer) {
@@ -134,7 +136,6 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
 }
 
 - (void)peek {
-    // Shown already, by the pointer or an option.
     if (!DPHideToolbar.on || self.inPlace || !self.bar || (self.revealed && !self.peeking)) return;
     [self.hideTimer invalidate];
     [self.peekTimer invalidate];
@@ -149,7 +150,6 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     if (!self.peeking) return;
     [self.peekTimer invalidate];
     self.peekTimer = nil;
-    // The pointer took over during the peek: hide when it leaves, as for any reveal.
     if (DPRevealToolbarOnHover.on && [self containsPointer]) {
         _peeking = NO;
         return;
@@ -162,14 +162,13 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
     self.bookmarks = bookmarks;
     self.inPlace = DPKeptInPlace(self.pane);
     NSRect rect = NSZeroRect;
-    // Nothing to reveal while the toolbar is already in its place.
     if (DPHideToolbar.on && (DPRevealToolbarOnHover.on || self.peeking) && !self.inPlace && !bar.hiddenOrHasHiddenAncestor) {
         rect = DPLaidOutFrame(bar);
         if (bookmarks) rect = NSUnionRect(rect, DPLaidOutFrame(bookmarks));
         rect = NSIntersectionRect(rect, self.pane.bounds);
         CGFloat height = MIN(DPToolbarHoverHeight, NSHeight(rect));
         if (self.revealed) {
-            // A margin below the revealed bar keeps it from flickering at its edge.
+            // A margin keeps the revealed bar from flickering at its edge.
             if (!self.pane.isFlipped) rect.origin.y -= DPToolbarHoverHeight;
             rect.size.height += DPToolbarHoverHeight;
             rect = NSIntersectionRect(rect, self.pane.bounds);
@@ -178,12 +177,7 @@ static NSTimer *DPEase(CGFloat from, CGFloat to, void (^step)(CGFloat value, BOO
             rect.size.height = height;
         }
     } else {
-        [self.animation invalidate];
-        [self.hideTimer invalidate];
-        [self.peekTimer invalidate];
-        self.animation = self.hideTimer = self.peekTimer = nil;
-        _revealed = _peeking = NO;
-        self.progress = 0;
+        [self stopReveal];
     }
     if (self.tracking && NSEqualRects(self.tracking.rect, rect)) return;
     if (self.tracking) [self.pane removeTrackingArea:self.tracking];

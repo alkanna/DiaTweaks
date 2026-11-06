@@ -1,4 +1,3 @@
-// One windowless original Dia, driven over its DevTools pipe, opens a native port to a password manager's helper for each client.
 #import <launch.h>
 #import <poll.h>
 #import <sys/socket.h>
@@ -8,7 +7,7 @@
 NSString *const DPPasswordsAgent = @"com.diapatches.passwords";
 
 static const uint32_t kMaxFrame = 64 << 20;  // Chromium's own limit for messages to a host
-// An extension reconnects each time its service worker wakes, so the copy stays warm between them rather than restarting.
+// An extension reconnects each time its service worker wakes, so the copy stays warm between them.
 static const NSTimeInterval kIdleQuit = 600;
 
 static NSMutableDictionary<NSNumber *, NSNumber *> *gClients;  // id → socket

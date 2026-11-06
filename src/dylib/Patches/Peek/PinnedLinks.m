@@ -8,4 +8,5 @@ DP_PATCH(DPPeekPinnedLinks) {
     .symbol = @"pin.fill",
     .tint = @"systemMintColor",
     .requires = @"peek",
+    .defaultOn = YES,
 };

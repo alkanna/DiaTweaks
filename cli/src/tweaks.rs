@@ -30,7 +30,6 @@ pub fn list(env: &Env) -> Result<()> {
     Ok(())
 }
 
-/// `diatweaks enable` and `disable`.
 pub fn set(env: &Env, ui: &Ui, names: &[String], on: bool) -> Result<()> {
     let manifest = Manifest::load(&env.manifest())?;
     let targets = manifest.resolve(names)?;
@@ -66,7 +65,6 @@ pub fn set(env: &Env, ui: &Ui, names: &[String], on: bool) -> Result<()> {
     Ok(())
 }
 
-/// The Tweaks screen of the menu.
 pub fn menu(env: &Env, ui: &Ui) -> Result<()> {
     let manifest = Manifest::load(&env.manifest())?;
     let current = manifest.state(&Prefs::new(&env.domain));
@@ -124,7 +122,6 @@ fn hint(manifest: &Manifest, current: &[bool], index: usize) -> String {
     hint
 }
 
-/// Turning on a patch that needs another one offers to turn that on too.
 fn add_requirements(
     ui: &Ui,
     manifest: &Manifest,
@@ -155,7 +152,6 @@ fn add_requirements(
     Ok(())
 }
 
-/// What won't show the way the user might expect, for the patches this run touches.
 fn notes(manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Vec<String> {
     let changed = |index: usize| current[index] != wanted[index];
     let mut notes = Vec::new();
@@ -182,8 +178,7 @@ fn notes(manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Vec<String> 
     notes
 }
 
-/// Saves the patches whose wanted state differs from what this run started from, and leaves the
-/// rest alone in case something else changed them meanwhile. Returns what it changed.
+/// Writes only what this run changed, in case something else changed the rest meanwhile.
 fn save(env: &Env, manifest: &Manifest, current: &[bool], wanted: &[bool]) -> Result<Vec<usize>> {
     let changes: Vec<usize> = (0..wanted.len())
         .filter(|&index| current[index] != wanted[index])

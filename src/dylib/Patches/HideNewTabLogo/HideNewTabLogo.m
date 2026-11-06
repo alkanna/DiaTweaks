@@ -1,7 +1,6 @@
 #import "StdPatch/StdPatch.h"
 
-// The Dia mark above the new tab page's search field is an icon button with an animated particle view drawn over it.
-// Dia uses the same button elsewhere, so only the new tab page's is hidden.
+// Dia uses the same button elsewhere.
 static BOOL DPIsNewTabLogo(NSView *view) {
     if (!DPIsKind(view, DPDiaNewTabLogo) && !DPIsKind(view, DPDiaNewTabLogoParticles)) return NO;
     for (NSView *up = view.superview; up; up = up.superview)

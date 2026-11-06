@@ -1,4 +1,3 @@
-// Updates go through the diapatch CLI: `check` finds them, `update` and `self-update` stage them, `apply` installs them.
 #import "StdPatch/StdPatch.h"
 
 void DPInstallUpdates(void);
@@ -28,7 +27,7 @@ extern NSNotificationName const DPUpdatesDidChangeNotification;
 - (void)download:(NSString *)part then:(void (^)(void))done;
 - (void)installAndRelaunch:(NSArray<NSString *> *)parts;
 
-// For the Debug menu: shows a made-up update for `part` that downloads in a few seconds and installs without relaunching.
+// Debug menu: a fake update that downloads in seconds and installs without relaunching.
 - (void)pretend:(NSString *)part;
 - (void)stopPretending;
 @end

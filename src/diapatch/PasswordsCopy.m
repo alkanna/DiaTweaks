@@ -6,7 +6,7 @@
 #import "PasswordsParts.h"
 
 extern char **environ;
-int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS then asks about the copy, not Dia
+int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t *attrs, int disclaim);  // private: macOS asks about the copy, not Dia
 
 static NSString *const kRelayScript =
     @"const ports = new Map();\n"
@@ -106,8 +106,7 @@ static pid_t launch(NSString *home) {
     close(fromDia[1]);
     if (status != 0) return 0;
     DPDevToolsAttach(toDia[1], fromDia[0]);
-    // --no-startup-window still leaves it a window (Dia's sign-in on a new profile), which opens a few seconds in and
-    // shows the app again, so it's hidden until then.
+    // Dia's sign-in window still opens a few seconds in despite --no-startup-window, showing the app again.
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         for (int tries = 0; tries < 200; tries++, usleep(100000)) {
             NSRunningApplication *copy = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];

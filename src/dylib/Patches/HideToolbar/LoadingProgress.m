@@ -1,14 +1,12 @@
 #import "HideToolbar.h"
 #import <objc/message.h>
 
-// While the page loads, Dia turns the toolbar's reload button into a stop button and fills the address field, both out
-// of sight while the toolbar is hidden. This shows a line at the top of the pane instead. Which panes are loading
-// comes from their own reload buttons. How far along comes from the tabs' ArcWebContents, which Chromium updates and
-// which don't say which pane they're in, so with several visible pages loading at once the focused one wins.
+// Which panes load comes from their reload buttons; progress comes from ArcWebContents, which don't say which pane
+// they're in, so with several visible pages loading the focused one wins.
 
 typedef NS_ENUM(NSInteger, DPWebContentsVisibility) { DPWebContentsVisible = 2 };  // ArcWebContentsVisibility.h
 
-static NSHashTable *DPLoadingContents;  // Tabs Chromium says are loading.
+static NSHashTable *DPLoadingContents;
 static NSTimer *DPProgressTimer;
 static char DPProgressKey;
 
@@ -19,7 +17,6 @@ static BOOL DPPaneLoading(NSView *pane) {
     return loading && *loading;
 }
 
-// The visible page that's loading, preferring the one with focus.
 static id DPVisibleLoadingContents(void) {
     id best = nil;
     for (id contents in DPLoadingContents.allObjects) {
@@ -29,7 +26,6 @@ static id DPVisibleLoadingContents(void) {
     return best;
 }
 
-// The line stands in for the toolbar only while none of it shows.
 static BOOL DPToolbarOutOfSight(NSView *pane) {
     DPToolbarHover *hover = [DPToolbarHover forPane:pane];
     return DPHideToolbar.on && DPHideToolbar.progress == 1 && hover.bar && !hover.bar.hiddenOrHasHiddenAncestor &&
@@ -43,11 +39,11 @@ static void DPRefreshProgress(void) {
     for (NSView *pane in DPPanes) {
         BOOL inSight = pane.window && !pane.hiddenOrHasHiddenAncestor, paneLoading = inSight && DPPaneLoading(pane);
         if (!DPShowLoadingProgress.on || !inSight || !DPToolbarOutOfSight(pane)) DPRemoveProgressLine(pane);
-        else if (paneLoading) DPShowProgressLine(pane, MAX(0.1, progress));  // A sliver at once, as Dia's starts.
+        else if (paneLoading) DPShowProgressLine(pane, MAX(0.1, progress));
         else DPFinishProgressLine(pane);
         loading = loading || paneLoading;
     }
-    // Reload buttons and reveals change after Chromium's updates, so keep looking while a page in sight loads.
+    // Reload buttons and reveals change after Chromium's updates, so poll while a page in sight loads.
     BOOL watch = DPShowLoadingProgress.on && (loading || contents);
     if (watch && !DPProgressTimer) {
         DPProgressTimer = [NSTimer timerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) { DPRefreshProgress(); }];

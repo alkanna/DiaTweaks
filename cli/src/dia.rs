@@ -15,10 +15,8 @@ use crate::{
     ui::Spinner,
 };
 
-/// The installed diapatch, which does everything that touches Dia's app bundles.
 pub struct Diapatch(PathBuf);
 
-/// `diapatch status --json`. Versions look like "1.55.1 (89833)".
 #[derive(Deserialize)]
 pub struct Status {
     pub official: Option<String>,
@@ -83,7 +81,7 @@ fn numbers(text: &str) -> Vec<u64> {
         .collect()
 }
 
-/// "1.55.1 (89833)", like diapatch prints it.
+/// Formatted like diapatch prints it.
 pub fn version_of(app: &Path) -> Option<String> {
     let info = plist::Value::from_file(app.join("Contents/Info.plist")).ok()?;
     let info = info.as_dictionary()?;
@@ -107,7 +105,6 @@ pub fn safe_mode(support: &Path) -> i64 {
         .unwrap_or(0)
 }
 
-/// Dia's processes, helpers included: everything running from inside the app bundle.
 fn processes(app: &Path) -> Vec<(libc::pid_t, PathBuf)> {
     let Ok(root) = app.canonicalize() else {
         return Vec::new();
